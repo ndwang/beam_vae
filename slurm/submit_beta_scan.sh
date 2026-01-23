@@ -17,7 +17,7 @@
 
 cd /pscratch/sd/n/ndwang/vae
 ml load conda
-conda activate sc_surrogate
+conda activate vae
 mkdir -p logs
 
 # srun flags:

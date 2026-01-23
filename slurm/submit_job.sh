@@ -21,6 +21,6 @@ CURRENT_LATENT=${LATENT_DIMS[$SLURM_ARRAY_TASK_ID]}
 
 cd /pscratch/sd/n/ndwang/vae
 ml load conda
-conda activate sc_surrogate
+conda activate vae
 
 python scripts/train.py model.latent_dim=$CURRENT_LATENT

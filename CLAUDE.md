@@ -58,5 +58,5 @@ sbatch slurm/submit_job.sh
 
 ```bash
 ml load conda
-conda activate sc_surrogate
+conda activate vae
 ```
