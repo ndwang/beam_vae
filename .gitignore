@@ -1,5 +1,5 @@
 # Data files (large, should not be in git)
-data/
+/data/
 *.npy
 *.pkl
 

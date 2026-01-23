@@ -14,12 +14,13 @@
 #SBATCH --mail-user=nw285@cornell.edu
 
 # --- JOB ARRAY ---
-#SBATCH --array=0-5
+#SBATCH --array=0-7
 # Scanning latent dimensions
-HPARAMS=(8 12 16 24 32 64 128 256)
-CURRENT_LATENT=${HPARAMS[$SLURM_ARRAY_TASK_ID]}
+LATENT_DIMS=(8 12 16 24 32 64 128 256)
+CURRENT_LATENT=${LATENT_DIMS[$SLURM_ARRAY_TASK_ID]}
 
 cd /pscratch/sd/n/ndwang/vae
 ml load conda
 conda activate sc_surrogate
-python scripts/train.py --batch-size 256 --num-workers 8 --epochs 300 --latent-dim $CURRENT_LATENT
+
+python scripts/train.py model.latent_dim=$CURRENT_LATENT

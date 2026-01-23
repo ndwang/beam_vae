@@ -1,0 +1,12 @@
+name: vae2d
+input_channels: 15
+hidden_channels: [32, 64, 128, 256, 512]
+latent_dim: 64
+input_size: 64
+kernel_size: 3
+activation: relu
+batch_norm: true
+dropout_rate: 0.0
+weight_init: kaiming_normal
+output_activation: sigmoid
+use_reparameterization: true

@@ -15,13 +15,11 @@
 #SBATCH --cpus-per-task=32         # CPUs (set higher than --num-workers)
 #SBATCH --gpus=4                   # Number of GPUs requested
 
-
 cd /pscratch/sd/n/ndwang/vae
 ml load conda
 conda activate sc_surrogate
 mkdir -p logs
 
-# This function defines exactly how to run ONE single line from your text file.
 # srun flags:
 #   --exact:         Don't let processes share resources
 #   --ntasks 1:      Run 1 task
@@ -30,5 +28,5 @@ mkdir -p logs
 export SRUN_ARGS="--exact --ntasks 1 --gpus 1 --cpus-per-task 32"
 
 parallel -j 4 --delay 0.2 \
-    "srun $SRUN_ARGS python scripts/train.py --batch-size 256 --num-workers 8 --epochs 300 --beta {} > logs/beta_run_{#}.log 2>&1" \
+    "srun $SRUN_ARGS python scripts/train.py training.beta={} > logs/beta_{}.log 2>&1" \
     :::: beta_scan.txt

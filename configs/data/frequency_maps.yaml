@@ -1,0 +1,3 @@
+name: frequency_maps
+path: /pscratch/sd/n/ndwang/frequency_maps/frequency_maps_minmax.npy
+scaler_path: /pscratch/sd/n/ndwang/frequency_maps/minmax_scaler.pkl
