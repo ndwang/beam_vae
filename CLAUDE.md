@@ -31,6 +31,9 @@ python scripts/train.py model.latent_dim=128 training.beta=1e-5
 # Use residual model
 python scripts/train.py model=model/residual_vae2d.yaml
 
+# Resume from checkpoint
+python scripts/train.py --resume runs/my_run/vae_best.pth
+
 # Submit to SLURM
 sbatch slurm/submit_job.sh
 ```
@@ -39,8 +42,9 @@ sbatch slurm/submit_job.sh
 
 - `src/models/vae2d.py` - Standard VAE architecture
 - `src/models/residual_vae2d.py` - VAE with residual blocks
-- `src/training/trainer.py` - Training loop and checkpointing
+- `src/training/trainer.py` - Training loop, checkpointing, and resume
 - `src/utils/config.py` - YAML config loading with CLI overrides
+- `src/utils/validation.py` - Pydantic config schema validation
 
 ## Data
 

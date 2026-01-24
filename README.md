@@ -111,6 +111,26 @@ python scripts/train.py model=model/residual_vae2d.yaml
 python scripts/train.py run_name=my_experiment
 ```
 
+### Config Validation
+
+Configurations are validated against a Pydantic schema on load. This catches:
+- **Typos in field names**: `latent_dims` instead of `latent_dim`
+- **Invalid values**: negative latent_dim, dropout > 1.0
+- **Type errors**: string where int expected
+- **Constraint violations**: input_size not divisible by 2^(num_encoder_blocks)
+
+Example error for a typo:
+```
+ConfigValidationError: Configuration validation failed:
+  model.latent_dims: Extra inputs are not permitted
+```
+
+To skip validation (not recommended):
+```python
+from src.utils import load_config
+config = load_config(validate=False)
+```
+
 ## Training
 
 ### Basic Training
@@ -139,6 +159,12 @@ runs/<run_name>/
 └── wandb/                   # W&B logs (if enabled)
 ```
 
+**Run Naming**: Auto-generated run names include a timestamp for uniqueness:
+```
+vae2d_e300_B0.0001_lr0.0005_latent64_20240115_143052
+```
+This prevents accidental overwrites when running the same config multiple times.
+
 **Checkpoint Contents:**
 - `epoch` - Training epoch number
 - `model_state_dict` - Model weights
@@ -146,6 +172,27 @@ runs/<run_name>/
 - `scheduler_state_dict` - Scheduler state
 - `val_loss` - Validation loss
 - `beta` - KL divergence weight
+
+### Resuming Training
+
+Resume training from a checkpoint if interrupted or to continue training:
+
+```bash
+# Resume from best checkpoint
+python scripts/train.py --resume runs/my_run/vae_best.pth
+
+# Resume from specific epoch checkpoint
+python scripts/train.py --resume runs/my_run/vae_epoch100.pth
+
+# Resume with modified config (e.g., more epochs)
+python scripts/train.py --resume runs/my_run/vae_best.pth training.epochs=500
+```
+
+The resume functionality:
+- Restores model weights, optimizer state, and scheduler state
+- Continues from the saved epoch number
+- Preserves the best validation loss for checkpointing
+- Warns if beta differs between checkpoint and current config
 
 ### Monitoring Training
 
@@ -357,7 +404,8 @@ vae/
 │   │   ├── trainer.py
 │   │   └── losses.py
 │   └── utils/              # Utilities
-│       ├── config.py
+│       ├── config.py       # Config loading with CLI overrides
+│       ├── validation.py   # Pydantic config schema validation
 │       ├── activations.py
 │       ├── logging.py      # W&B callback classes
 │       └── wandb_init.py   # W&B initialization
