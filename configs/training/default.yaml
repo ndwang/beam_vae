@@ -21,7 +21,7 @@ checkpoint_freq: 50  # Save checkpoint every N epochs (in addition to best)
 wandb:
   enabled: false          # Master switch
   project: "beam-vae"     # W&B project name
-  entity: "ndwang"        # W&B team/username (null = default)
+  entity: null        # W&B team/username (null = default)
   offline: true           # Default true for NERSC (sync later from login node)
   tags: []                # Optional tags
   notes: null             # Optional description

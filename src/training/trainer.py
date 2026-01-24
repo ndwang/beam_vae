@@ -263,7 +263,7 @@ class Trainer:
                 if val_metrics["total"] < self.best_val_loss:
                     self.best_val_loss = val_metrics["total"]
                     best_path = save_dir / f"{model_name}_best.pth"
-                    self._save_checkpoint(best_path, epoch + 1, val_metrics["total"])
+                    self._save_checkpoint(best_path, epoch + 1, train_metrics, val_metrics)
                     self.logger_callback.log_checkpoint_metadata(
                         best_path, epoch + 1, val_metrics["total"], is_best=True
                     )
@@ -271,7 +271,7 @@ class Trainer:
                 # Periodic checkpoint
                 if (epoch + 1) % checkpoint_freq == 0:
                     ckpt_path = save_dir / f"{model_name}_epoch{epoch + 1}.pth"
-                    self._save_checkpoint(ckpt_path, epoch + 1, val_metrics["total"])
+                    self._save_checkpoint(ckpt_path, epoch + 1, train_metrics, val_metrics)
                     self.logger_callback.log_checkpoint_metadata(
                         ckpt_path, epoch + 1, val_metrics["total"], is_best=False
                     )
@@ -291,20 +291,32 @@ class Trainer:
 
         return self.history
 
-    def _save_checkpoint(self, path: Path, epoch: int, val_loss: float) -> None:
+    def _save_checkpoint(
+        self,
+        path: Path,
+        epoch: int,
+        train_metrics: Dict[str, float],
+        val_metrics: Dict[str, float],
+    ) -> None:
         """Save a full checkpoint with model, optimizer, and scheduler state.
 
         Args:
             path: Path to save the checkpoint.
             epoch: Current epoch number.
-            val_loss: Current validation loss.
+            train_metrics: Training metrics (total, recon, kl).
+            val_metrics: Validation metrics (total, recon, kl).
         """
         torch.save({
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
-            "val_loss": val_loss,
+            "train_loss": train_metrics["total"],
+            "train_recon_loss": train_metrics["recon"],
+            "train_kl_loss": train_metrics["kl"],
+            "val_loss": val_metrics["total"],
+            "val_recon_loss": val_metrics["recon"],
+            "val_kl_loss": val_metrics["kl"],
             "beta": self.beta,
         }, path)
         print(f"Checkpoint saved: {path}")

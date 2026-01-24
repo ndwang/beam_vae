@@ -19,8 +19,8 @@ A Variational Autoencoder (VAE) training pipeline for frequency map reconstructi
 
 ```bash
 # Clone the repository
-git clone <repo-url> /pscratch/sd/$USER/vae
-cd /pscratch/sd/$USER/vae
+git clone https://github.com/ndwang/NERSC_ML_pipeline.git $PSCRATCH/vae
+cd $PSCRATCH/vae
 
 # Load conda and create environment
 ml load conda
@@ -90,7 +90,7 @@ configs/
 | `seed` | 42 | Random seed |
 | `checkpoint_freq` | 50 | Save checkpoint every N epochs |
 | `wandb.enabled` | false | Enable Weights & Biases logging |
-| `wandb.project` | vae-training | W&B project name |
+| `wandb.project` | beam-vae | W&B project name |
 | `wandb.offline` | true | Offline mode (for NERSC) |
 
 ### CLI Overrides
@@ -109,26 +109,6 @@ python scripts/train.py model=model/residual_vae2d.yaml
 
 # Custom run name
 python scripts/train.py run_name=my_experiment
-```
-
-### Config Validation
-
-Configurations are validated against a Pydantic schema on load. This catches:
-- **Typos in field names**: `latent_dims` instead of `latent_dim`
-- **Invalid values**: negative latent_dim, dropout > 1.0
-- **Type errors**: string where int expected
-- **Constraint violations**: input_size not divisible by 2^(num_encoder_blocks)
-
-Example error for a typo:
-```
-ConfigValidationError: Configuration validation failed:
-  model.latent_dims: Extra inputs are not permitted
-```
-
-To skip validation (not recommended):
-```python
-from src.utils import load_config
-config = load_config(validate=False)
 ```
 
 ## Training
@@ -153,25 +133,43 @@ runs/<run_name>/
 ├── config.yaml              # Full configuration (for reproducibility)
 ├── <run_name>.pth          # Final model weights
 ├── <run_name>_best.pth     # Best model checkpoint (lowest val loss)
-├── <run_name>_epoch50.pth  # Periodic checkpoints (every 50 epochs)
-├── <run_name>_epoch100.pth
-├── <run_name>_history.csv  # Training/validation losses
+├── <run_name>_epoch{N}.pth  # Periodic checkpoints
+├── <run_name>_history.csv  # Training/validation loss history
 └── wandb/                   # W&B logs (if enabled)
 ```
 
-**Run Naming**: Auto-generated run names include a timestamp for uniqueness:
+**History CSV Contents** (`<run_name>_history.csv`):
+| Column | Description |
+|--------|-------------|
+| `epoch` | Epoch number |
+| `train_total` | Training total loss (recon + β×KL) |
+| `train_recon` | Training reconstruction loss |
+| `train_kl` | Training KL divergence |
+| `val_total` | Validation total loss |
+| `val_recon` | Validation reconstruction loss |
+| `val_kl` | Validation KL divergence |
+
+**Run Naming**: Auto-generated run names:
 ```
+# Format: ModelName_eEPOCHS_BBETA_lrLR_latentDIM_TIMESTAMP
 vae2d_e300_B0.0001_lr0.0005_latent64_20240115_143052
 ```
-This prevents accidental overwrites when running the same config multiple times.
+This generates unique run names to avoid accidental collisions.
 
 **Checkpoint Contents:**
-- `epoch` - Training epoch number
-- `model_state_dict` - Model weights
-- `optimizer_state_dict` - Optimizer state
-- `scheduler_state_dict` - Scheduler state
-- `val_loss` - Validation loss
-- `beta` - KL divergence weight
+| Key | Description |
+|-----|-------------|
+| `epoch` | Training epoch number |
+| `model_state_dict` | Model weights |
+| `optimizer_state_dict` | Optimizer state |
+| `scheduler_state_dict` | Scheduler state |
+| `train_loss` | Training total loss |
+| `train_recon_loss` | Training reconstruction loss |
+| `train_kl_loss` | Training KL divergence |
+| `val_loss` | Validation total loss |
+| `val_recon_loss` | Validation reconstruction loss |
+| `val_kl_loss` | Validation KL divergence |
+| `beta` | KL divergence weight (β-VAE) |
 
 ### Resuming Training
 
@@ -235,7 +233,7 @@ W&B settings in `configs/training/default.yaml`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `wandb.enabled` | false | Enable/disable W&B logging |
-| `wandb.project` | vae-training | W&B project name |
+| `wandb.project` | beam-vae | W&B project name |
 | `wandb.entity` | null | W&B team/username (null = default) |
 | `wandb.offline` | true | Offline mode (sync later) |
 | `wandb.tags` | [] | Optional tags for run organization |
@@ -243,7 +241,7 @@ W&B settings in `configs/training/default.yaml`:
 
 ### NERSC Offline Workflow
 
-Compute nodes don't have internet access, so use offline mode (default):
+Use offline mode (default) to avoid internet access during training:
 
 **1. Train on compute node (offline mode):**
 ```bash
