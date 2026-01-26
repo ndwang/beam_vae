@@ -149,12 +149,12 @@ runs/<run_name>/
 | `val_recon` | Validation reconstruction loss |
 | `val_kl` | Validation KL divergence |
 
-**Run Naming**: Auto-generated run names:
+**Run Naming**: Auto-generated run names use a concise format:
 ```
-# Format: ModelName_eEPOCHS_BBETA_lrLR_latentDIM_TIMESTAMP
-vae2d_e300_B0.0001_lr0.0005_latent64_20240115_143052
+# Format: latent{dim}_beta{beta}_{YYMMDD}_{HHMM}
+latent64_beta1e-05_260126_1430
 ```
-This generates unique run names to avoid accidental collisions.
+The timestamp ensures uniqueness while keeping names readable.
 
 **Checkpoint Contents:**
 | Key | Description |
@@ -243,23 +243,18 @@ W&B settings in `configs/training/default.yaml`:
 
 Use offline mode (default) to avoid internet access during training:
 
-**1. Train on compute node (offline mode):**
-```bash
-python scripts/train.py training.wandb.enabled=true
-# W&B logs saved to runs/<run_name>/wandb/offline-run-*
-```
+**SLURM jobs:** W&B logs are automatically synced at the end of each job.
 
-**2. Sync from login node (with internet):**
+**Manual runs:** Sync logs afterwards from login node:
 ```bash
-# After job completes, sync all offline runs
-wandb sync runs/*/wandb/offline-run-*
+# Sync all offline runs
+./slurm/sync_wandb.sh
 
 # Or sync specific run
 wandb sync runs/<run_name>/wandb/offline-run-*
 ```
 
-**3. View on W&B dashboard:**
-Visit https://wandb.ai to see your synced runs.
+**View on W&B dashboard:** Visit https://wandb.ai to see your synced runs.
 
 ### Logged Metrics
 
@@ -295,44 +290,47 @@ python scripts/train.py training.checkpoint_freq=25  # Save every 25 epochs
 
 ### Example: Multi-Run Sweep with W&B
 
-```bash
-# Launch sweep with different latent dimensions
-for latent_dim in 16 32 64 128; do
-    python scripts/train.py \
-        training.wandb.enabled=true \
-        model.latent_dim=$latent_dim \
-        run_name=vae_latent${latent_dim}
-done
+Use the SLURM scan scripts for parallel sweeps:
 
-# Sync all runs when complete
-wandb sync runs/*/wandb/offline-run-*
+```bash
+# Edit slurm/submit_1d_scan.sh to configure your sweep, then:
+sbatch slurm/submit_1d_scan.sh
+# W&B logs are automatically synced at the end of the job
 ```
 
 Then compare all runs on the W&B dashboard with interactive plots and parallel coordinates.
 
 ## SLURM Jobs
 
-### Single Job with Array
+Submit SLURM jobs in the top directory. SLURM logs are written to `logs/` (create this directory before first submission).
 
-Submit a latent dimension sweep:
-
-```bash
-sbatch slurm/submit_job.sh
-```
-
-This runs 8 jobs (latent_dim = 8, 12, 16, 24, 32, 64, 128, 256).
-
-### Multi-GPU Parallel Sweep
-
-Run multiple experiments on 4 GPUs simultaneously:
+### Single Run
 
 ```bash
-# Latent dimension sweep
-sbatch slurm/submit_latent_scan.sh
-
-# Beta sweep
-sbatch slurm/submit_beta_scan.sh
+sbatch slurm/submit_single.sh
 ```
+
+Edit `RUN_PREFIX` and `OVERRIDES` in the script to configure the run.
+
+### 1D Parameter Scan
+
+Run a sweep over a single parameter using 4 GPUs (1 node) in parallel:
+
+```bash
+sbatch slurm/submit_1d_scan.sh
+```
+
+Edit `PARAM_NAME` and `PARAM_VALUES` in the script.
+
+### 2D Grid Search
+
+Run a grid search over two parameters:
+
+```bash
+sbatch slurm/submit_2d_grid.sh
+```
+
+Edit `PARAM1_*` and `PARAM2_*` variables in the script.
 
 ### Custom SLURM Job
 
@@ -389,9 +387,11 @@ vae/
 │   ├── visualize_loss.py   # Loss curve plotting
 │   └── visualize_recon.py  # Reconstruction visualization
 ├── slurm/                   # NERSC job scripts
-│   ├── submit_job.sh
-│   ├── submit_latent_scan.sh
-│   └── submit_beta_scan.sh
+│   ├── submit_single.sh     # Single training run
+│   ├── submit_1d_scan.sh    # 1D parameter sweep
+│   ├── submit_2d_grid.sh    # 2D grid search
+│   └── sync_wandb.sh        # Sync W&B for manual runs
+├── logs/                    # SLURM output logs (not in git)
 ├── src/                     # Source code
 │   ├── models/             # VAE architectures
 │   │   ├── vae2d.py

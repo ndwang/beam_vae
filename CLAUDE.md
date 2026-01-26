@@ -34,8 +34,10 @@ python scripts/train.py model=model/residual_vae2d.yaml
 # Resume from checkpoint
 python scripts/train.py --resume runs/my_run/vae_best.pth
 
-# Submit to SLURM
-sbatch slurm/submit_job.sh
+# Submit to SLURM (run from project root)
+sbatch slurm/submit_single.sh      # Single run
+sbatch slurm/submit_1d_scan.sh     # Parameter sweep
+sbatch slurm/submit_2d_grid.sh     # Grid search
 ```
 
 ## Key Files
@@ -56,6 +58,8 @@ sbatch slurm/submit_job.sh
 
 - Config overrides use dot notation: `model.latent_dim=64`
 - Run outputs saved to `runs/<run_name>/` with config.yaml for reproducibility
+- Run names: `latent{dim}_beta{beta}_{YYMMDD}_{HHMM}` (auto-generated with timestamp)
+- SLURM logs go to `logs/` directory (must exist before job submission)
 - SLURM scripts use GNU parallel for multi-GPU sweeps
 
 ## Environment

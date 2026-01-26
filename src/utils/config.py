@@ -148,13 +148,13 @@ def config_to_model_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def generate_run_name(config: Dict[str, Any]) -> str:
-    """Generate a run name from config parameters with timestamp for uniqueness."""
-    model_name = config.get('model', {}).get('name', 'vae')
-    epochs = config.get('training', {}).get('epochs', 0)
-    beta = config.get('training', {}).get('beta', 0)
-    lr = config.get('training', {}).get('lr', 0)
-    latent_dim = config.get('model', {}).get('latent_dim', 0)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    """Generate concise run name from key params + short timestamp.
 
-    # Format: ModelName_eEPOCHS_BBETA_lrLR_latentDIM_TIMESTAMP
-    return f"{model_name}_e{epochs}_B{beta}_lr{lr}_latent{latent_dim}_{timestamp}"
+    Format: latent{dim}_beta{beta}_{MMDD}_{HHMM}
+    Example: latent64_beta1e-05_0126_1430
+    """
+    latent_dim = config.get('model', {}).get('latent_dim', 0)
+    beta = config.get('training', {}).get('beta', 0)
+    timestamp = datetime.now().strftime("%y%m%d_%H%M")
+
+    return f"latent{latent_dim}_beta{beta}_{timestamp}"
