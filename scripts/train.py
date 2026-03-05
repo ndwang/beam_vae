@@ -99,8 +99,11 @@ def main():
     dataset_path = data_cfg.get('path')
     if not dataset_path:
         raise ValueError("Dataset path not specified in config")
+    scales_path = data_cfg.get('scales_path')
+    if not scales_path:
+        raise ValueError("Scales path not specified in config (data.scales_path)")
 
-    full_dataset = FrequencyMapDataset(dataset_path)
+    full_dataset = FrequencyMapDataset(dataset_path, scales_path)
     n_samples = len(full_dataset)
     val_split = training_cfg.get('val_split', 0.1)
     val_size = int(val_split * n_samples)
@@ -188,6 +191,7 @@ def main():
         scheduler=scheduler,
         device=device,
         beta=training_cfg.get('beta', 0.0),
+        gamma=training_cfg.get('gamma', 0.0),
         loss_type=training_cfg.get('loss_type', 'mse'),
         grad_clip=training_cfg.get('grad_clip', 1.0),
         logger_callback=logger_callback,

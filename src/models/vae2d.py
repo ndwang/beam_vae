@@ -150,6 +150,7 @@ class VAE2D(nn.Module):
         self.weight_init = str(model_config.get('weight_init', 'kaiming_normal'))
         output_activation = str(model_config.get('output_activation', 'sigmoid'))
         self.use_reparameterization = bool(model_config.get('use_reparameterization', True))
+        self.n_scales = int(model_config.get('n_scales', 6))
 
         if self.input_size % (2 ** len(hidden_channels)) != 0:
             raise ValueError(
@@ -177,13 +178,17 @@ class VAE2D(nn.Module):
         self.decoder_start_hw: int = self.input_size // (2 ** len(hidden_channels))
         bottleneck_features = hidden_channels[-1] * self.decoder_start_hw * self.decoder_start_hw
         # Final projection to latent-dim space before parameter heads
-        self.fc_bottleneck = nn.Linear(bottleneck_features, self.latent_dim)
+        # Scales are concatenated to flattened conv features before this layer
+        self.fc_bottleneck = nn.Linear(bottleneck_features + self.n_scales, self.latent_dim)
         self.bottleneck_activation = get_activation(activation)
         self.fc_mu = nn.Linear(self.latent_dim, self.latent_dim)
         self.fc_logvar = nn.Linear(self.latent_dim, self.latent_dim)
 
         # Decoder projection
         self.fc_proj = nn.Linear(self.latent_dim, hidden_channels[-1] * self.decoder_start_hw * self.decoder_start_hw)
+
+        # Scale prediction head: recovers physical scales from latent vector
+        self.scale_head = nn.Linear(self.latent_dim, self.n_scales)
 
         # Decoder blocks
         self.decoder_blocks: nn.ModuleList = nn.ModuleList()
@@ -223,19 +228,20 @@ class VAE2D(nn.Module):
         logger.info(f"Architecture: {self.input_channels} channels -> {' -> '.join(map(str, hidden_channels))} -> latent_dim={self.latent_dim} -> {self.input_channels} channels")
         logger.info(f"Input size: {self.input_size}x{self.input_size}, Decoder start size: {self.decoder_start_hw}x{self.decoder_start_hw}")
 
-    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def encode(self, x: torch.Tensor, scales: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Encoder path
         current = x
         for block in self.encoder_blocks:
             current = block(current)
 
-        h = current.flatten(1)
+        h = current.flatten(1)  # (B, bottleneck_features)
+        h = torch.cat([h, scales], dim=1)  # (B, bottleneck_features + n_scales)
         h = self.fc_bottleneck(h)
         h = self.bottleneck_activation(h)
         mu = self.fc_mu(h)
         logvar = self.fc_logvar(h)
 
-        logvar = torch.clamp(logvar, min=-10, max=10) 
+        logvar = torch.clamp(logvar, min=-10, max=10)
         return mu, logvar
 
     @staticmethod
@@ -244,7 +250,8 @@ class VAE2D(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
+    def decode(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        pred_scales = self.scale_head(z)  # (B, n_scales)
         h = self.fc_proj(z)
         h = h.view(z.size(0), -1, self.decoder_start_hw, self.decoder_start_hw)
         current = h
@@ -253,17 +260,17 @@ class VAE2D(nn.Module):
 
         current = self.final_upsample(current)
         current = self.final_conv(current)
-        
-        return self.output_normalization(current)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        mu, logvar = self.encode(x)
+        return self.output_normalization(current), pred_scales
+
+    def forward(self, x: torch.Tensor, scales: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        mu, logvar = self.encode(x, scales)
         if self.use_reparameterization and self.training:
             z = self.reparameterize(mu, logvar)
         else:
             z = mu
-        recon = self.decode(z)
-        return recon, mu, logvar
+        recon, pred_scales = self.decode(z)
+        return recon, pred_scales, mu, logvar
 
     def get_model_summary(self) -> Dict[str, Any]:
         total_params = sum(p.numel() for p in self.parameters())
@@ -315,8 +322,10 @@ if __name__ == "__main__":
 
     batch_size = 2
     x = torch.randn(batch_size, 15, 64, 64)
-    print(f"Input shape: {x.shape}")
+    scales = torch.rand(batch_size, 6)
+    print(f"Input shape: {x.shape}, Scales shape: {scales.shape}")
     with torch.no_grad():
-        recon, mu, logvar = model(x)
+        recon, pred_scales, mu, logvar = model(x, scales)
         print(f"Recon shape: {recon.shape}")
+        print(f"Pred scales shape: {pred_scales.shape}")
         print(f"Mu shape: {mu.shape}, LogVar shape: {logvar.shape}")

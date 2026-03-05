@@ -22,7 +22,7 @@
 
 # --- CONFIGURATION ---
 PARAM_NAME="model.latent_dim"       # Parameter to scan (dot notation)
-PARAM_VALUES=(16 32 64 128 256)     # Values to try
+PARAM_VALUES=(16 32 64 128)     # Values to try
 FIXED_OVERRIDES=""                  # Additional fixed overrides (optional)
 
 cd /pscratch/sd/n/ndwang/vae

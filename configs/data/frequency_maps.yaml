@@ -1,3 +1,4 @@
 name: frequency_maps
 path: /pscratch/sd/n/ndwang/vae/data/frequency_maps_minmax.npy
+scales_path: /pscratch/sd/n/ndwang/vae/data/frequency_maps_scales.npy
 scaler_path: /pscratch/sd/n/ndwang/vae/data/minmax_scaler.pkl

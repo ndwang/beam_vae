@@ -24,6 +24,7 @@ class Trainer:
         scheduler: Optional learning rate scheduler.
         device: Device to train on.
         beta: KL divergence weight for beta-VAE.
+        gamma: Scale reconstruction loss weight.
         loss_type: Type of reconstruction loss ('mse' or 'bce').
         grad_clip: Maximum gradient norm for clipping.
         logger_callback: Optional logging callback for metrics and artifacts.
@@ -36,6 +37,7 @@ class Trainer:
         scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         device: torch.device = None,
         beta: float = 0.0,
+        gamma: float = 0.0,
         loss_type: str = "mse",
         grad_clip: float = 1.0,
         logger_callback: Optional["LoggingCallback"] = None,
@@ -45,6 +47,7 @@ class Trainer:
         self.scheduler = scheduler
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.beta = beta
+        self.gamma = gamma
         self.loss_type = loss_type
         self.grad_clip = grad_clip
 
@@ -60,8 +63,8 @@ class Trainer:
         self.model.to(self.device)
 
         self.history = {
-            "train_total": [], "train_recon": [], "train_kl": [],
-            "val_total": [], "val_recon": [], "val_kl": []
+            "train_total": [], "train_recon": [], "train_kl": [], "train_scale": [],
+            "val_total": [], "val_recon": [], "val_kl": [], "val_scale": [],
         }
 
         # Track starting epoch for resume functionality
@@ -122,19 +125,22 @@ class Trainer:
         total_loss = 0.0
         total_recon = 0.0
         total_kl = 0.0
+        total_scale = 0.0
         n_samples = 0
 
         loop = tqdm(train_loader, desc="Training", leave=False)
-        for step, x in enumerate(loop):
+        for step, (maps, scales) in enumerate(loop):
             if max_steps is not None and step >= max_steps:
                 break
 
-            x = x.to(self.device)
+            maps = maps.to(self.device)
+            scales = scales.to(self.device)
             self.optimizer.zero_grad()
 
-            recon, mu, logvar = self.model(x)
-            loss, recon_loss, kl_loss = vae_loss(
-                recon, x, mu, logvar, self.beta, self.loss_type
+            recon, pred_scales, mu, logvar = self.model(maps, scales)
+            loss, recon_loss, kl_loss, s_loss = vae_loss(
+                recon, maps, mu, logvar, self.beta, self.loss_type,
+                pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
             )
 
             if torch.isnan(loss):
@@ -145,16 +151,18 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()
 
-            batch_size = x.size(0)
+            batch_size = maps.size(0)
             total_loss += loss.item() * batch_size
             total_recon += recon_loss.item() * batch_size
             total_kl += kl_loss.item() * batch_size
+            total_scale += s_loss.item() * batch_size
             n_samples += batch_size
 
         return {
             "total": total_loss / n_samples,
             "recon": total_recon / n_samples,
             "kl": total_kl / n_samples,
+            "scale": total_scale / n_samples,
         }
 
     @torch.no_grad()
@@ -171,25 +179,30 @@ class Trainer:
         total_loss = 0.0
         total_recon = 0.0
         total_kl = 0.0
+        total_scale = 0.0
         n_samples = 0
 
-        for x in val_loader:
-            x = x.to(self.device)
-            recon, mu, logvar = self.model(x)
-            loss, recon_loss, kl_loss = vae_loss(
-                recon, x, mu, logvar, self.beta, self.loss_type
+        for maps, scales in val_loader:
+            maps = maps.to(self.device)
+            scales = scales.to(self.device)
+            recon, pred_scales, mu, logvar = self.model(maps, scales)
+            loss, recon_loss, kl_loss, s_loss = vae_loss(
+                recon, maps, mu, logvar, self.beta, self.loss_type,
+                pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
             )
 
-            batch_size = x.size(0)
+            batch_size = maps.size(0)
             total_loss += loss.item() * batch_size
             total_recon += recon_loss.item() * batch_size
             total_kl += kl_loss.item() * batch_size
+            total_scale += s_loss.item() * batch_size
             n_samples += batch_size
 
         return {
             "total": total_loss / n_samples,
             "recon": total_recon / n_samples,
             "kl": total_kl / n_samples,
+            "scale": total_scale / n_samples,
         }
 
     def fit(
@@ -225,9 +238,11 @@ class Trainer:
             self.history["train_total"].append(train_metrics["total"])
             self.history["train_recon"].append(train_metrics["recon"])
             self.history["train_kl"].append(train_metrics["kl"])
+            self.history["train_scale"].append(train_metrics["scale"])
             self.history["val_total"].append(val_metrics["total"])
             self.history["val_recon"].append(val_metrics["recon"])
             self.history["val_kl"].append(val_metrics["kl"])
+            self.history["val_scale"].append(val_metrics["scale"])
 
             # Update scheduler
             if self.scheduler is not None:
@@ -248,9 +263,11 @@ class Trainer:
                 "train/total_loss": train_metrics["total"],
                 "train/recon_loss": train_metrics["recon"],
                 "train/kl_loss": train_metrics["kl"],
+                "train/scale_loss": train_metrics["scale"],
                 "val/total_loss": val_metrics["total"],
                 "val/recon_loss": val_metrics["recon"],
                 "val/kl_loss": val_metrics["kl"],
+                "val/scale_loss": val_metrics["scale"],
                 "learning_rate": current_lr,
             }, step=epoch + 1)
 
@@ -297,8 +314,8 @@ class Trainer:
         Args:
             path: Path to save the checkpoint.
             epoch: Current epoch number.
-            train_metrics: Training metrics (total, recon, kl).
-            val_metrics: Validation metrics (total, recon, kl).
+            train_metrics: Training metrics (total, recon, kl, scale).
+            val_metrics: Validation metrics (total, recon, kl, scale).
         """
         torch.save({
             "epoch": epoch,
@@ -308,10 +325,13 @@ class Trainer:
             "train_loss": train_metrics["total"],
             "train_recon_loss": train_metrics["recon"],
             "train_kl_loss": train_metrics["kl"],
+            "train_scale_loss": train_metrics["scale"],
             "val_loss": val_metrics["total"],
             "val_recon_loss": val_metrics["recon"],
             "val_kl_loss": val_metrics["kl"],
+            "val_scale_loss": val_metrics["scale"],
             "beta": self.beta,
+            "gamma": self.gamma,
         }, path)
         tqdm.write(f"Checkpoint saved: {path}")
 
@@ -320,8 +340,8 @@ class Trainer:
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
-                "epoch", "train_total", "train_recon", "train_kl",
-                "val_total", "val_recon", "val_kl"
+                "epoch", "train_total", "train_recon", "train_kl", "train_scale",
+                "val_total", "val_recon", "val_kl", "val_scale",
             ])
             # History only contains entries for epochs we actually ran
             num_recorded = len(self.history["train_total"])
@@ -333,7 +353,9 @@ class Trainer:
                     self.history["train_total"][i],
                     self.history["train_recon"][i],
                     self.history["train_kl"][i],
+                    self.history["train_scale"][i],
                     self.history["val_total"][i],
                     self.history["val_recon"][i],
                     self.history["val_kl"][i],
+                    self.history["val_scale"][i],
                 ])
