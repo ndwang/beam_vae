@@ -19,7 +19,7 @@ A Variational Autoencoder (VAE) training pipeline for frequency map reconstructi
 
 ```bash
 # Clone the repository
-git clone https://github.com/ndwang/NERSC_ML_pipeline.git $PSCRATCH/vae
+git clone https://github.com/ndwang/beam_vae.git $PSCRATCH/vae
 cd $PSCRATCH/vae
 
 # Load conda and create environment
