@@ -1,6 +1,6 @@
 # VAE Training Pipeline
 
-A Variational Autoencoder (VAE) training pipeline for frequency map reconstruction, designed for NERSC Perlmutter.
+A Variational Autoencoder (VAE) training pipeline for frequency map reconstruction, designed for NERSC Perlmutter. See [BeamVAE.md](docs/BeamVAE.md) for the coordinate convention and physics motivation.
 
 ## Table of Contents
 
