@@ -20,7 +20,10 @@ def reconstruction_loss(
         Scalar loss tensor.
     """
     if loss_type == "mse":
-        return F.mse_loss(recon, target)
+        # Sum over pixels (H, W), mean over batch and channels.
+        # Each channel is a normalized density — its summed squared error
+        # is the natural per-channel reconstruction metric.
+        return ((recon - target) ** 2).sum(dim=(2, 3)).mean()
     elif loss_type == "bce":
         return F.binary_cross_entropy(recon, target)
     else:
