@@ -23,6 +23,7 @@ wandb:
   enabled: false          # Master switch
   project: "beam-vae"     # W&B project name
   entity: null        # W&B team/username (null = default)
+  group: null             # Group name (use to cluster sweep runs together)
   offline: true           # Default true for NERSC (sync later from login node)
   tags: []                # Optional tags
   notes: null             # Optional description

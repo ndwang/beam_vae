@@ -2,7 +2,7 @@
 #SBATCH --job-name=vae_1d_scan
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --cpus-per-task=32
@@ -22,8 +22,9 @@
 
 # --- CONFIGURATION ---
 PARAM_NAME="model.latent_dim"       # Parameter to scan (dot notation)
-PARAM_VALUES=(16 32 64 128)     # Values to try
-FIXED_OVERRIDES=""                  # Additional fixed overrides (optional)
+PARAM_VALUES=(32 128 256 512)      # Values to try
+FIXED_OVERRIDES="data=data/sectioned_10k.yaml training.beta=0 training.gamma=1e-3"
+SWEEP_GROUP="scan_$(echo $PARAM_NAME | sed 's/.*\.//')_$(date +%y%m%d_%H%M)"
 
 cd /pscratch/sd/n/ndwang/vae
 ml load conda
@@ -42,10 +43,11 @@ run_single() {
         run_name=${run_name} \
         ${FIXED_OVERRIDES} \
         training.wandb.enabled=true \
+        training.wandb.group=${SWEEP_GROUP} \
         > logs/${param_short}_${val}.log 2>&1
 }
 export -f run_single
-export PARAM_NAME FIXED_OVERRIDES SRUN_ARGS
+export PARAM_NAME FIXED_OVERRIDES SRUN_ARGS SWEEP_GROUP
 
 parallel -j 4 --delay 0.2 run_single ::: "${PARAM_VALUES[@]}"
 

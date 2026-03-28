@@ -24,6 +24,7 @@ class ModelConfig(BaseModel):
     weight_init: Literal["kaiming_normal", "xavier_normal", "xavier_uniform"] = "kaiming_normal"
     use_reparameterization: bool = True
     n_scales: int = Field(default=6, ge=0)
+    n_centroids: int = Field(default=6, ge=0)
 
     @field_validator("hidden_channels")
     @classmethod
@@ -64,6 +65,7 @@ class WandbConfig(BaseModel):
     enabled: bool = False
     project: str = "beam-vae"
     entity: Optional[str] = None
+    group: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
     offline: bool = True
@@ -80,6 +82,7 @@ class TrainingConfig(BaseModel):
     weight_decay: float = Field(default=1e-4, ge=0.0)
     beta: float = Field(default=0.0, ge=0.0)
     gamma: float = Field(default=1.0, ge=0.0)
+    delta: float = Field(default=0.0, ge=0.0)
     loss_type: Literal["mse", "bce"] = "mse"
     grad_clip: float = Field(default=1.0, ge=0.0)
     val_split: float = Field(default=0.1, gt=0.0, lt=1.0)
@@ -99,6 +102,7 @@ class DataConfig(BaseModel):
     name: Optional[str] = None
     path: str
     scales_path: str
+    centroids_path: Optional[str] = None
     scaler_path: Optional[str] = None
     channels: int = Field(default=15, ge=1)
     height: int = Field(default=64, ge=1)

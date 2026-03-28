@@ -28,6 +28,7 @@ PARAM2_NAME="training.beta"
 PARAM2_VALUES=(1e-7 1e-6 1e-5 1e-4)
 
 FIXED_OVERRIDES=""  # Additional fixed overrides (optional)
+SWEEP_GROUP="grid_$(echo $PARAM1_NAME | sed 's/.*\.//')_$(echo $PARAM2_NAME | sed 's/.*\.//')_$(date +%y%m%d_%H%M)"
 
 cd /pscratch/sd/n/ndwang/vae
 ml load conda
@@ -49,10 +50,11 @@ run_combo() {
         run_name=${run_name} \
         ${FIXED_OVERRIDES} \
         training.wandb.enabled=true \
+        training.wandb.group=${SWEEP_GROUP} \
         > logs/${p1_short}_${val1}_${p2_short}_${val2}.log 2>&1
 }
 export -f run_combo
-export PARAM1_NAME PARAM2_NAME FIXED_OVERRIDES SRUN_ARGS
+export PARAM1_NAME PARAM2_NAME FIXED_OVERRIDES SRUN_ARGS SWEEP_GROUP
 
 parallel -j 4 --delay 0.2 run_combo ::: "${PARAM1_VALUES[@]}" ::: "${PARAM2_VALUES[@]}"
 
