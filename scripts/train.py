@@ -29,7 +29,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
+import torch.multiprocessing
 from torch.utils.data import DataLoader
+
+# Use forkserver to avoid LLVM thread pool corruption in forked workers
+# when torch.compile is enabled (prevents pthread_join failures)
+torch.multiprocessing.set_start_method("forkserver", force=True)
 
 from src.models import VAE2D, ResidualVAE2D
 from src.data import FrequencyMapDataset
@@ -195,6 +200,8 @@ def main():
         loss_type=training_cfg.get('loss_type', 'mse'),
         grad_clip=training_cfg.get('grad_clip', 1.0),
         logger_callback=logger_callback,
+        use_amp=training_cfg.get('use_amp', True),
+        compile_model=training_cfg.get('compile_model', True),
     )
 
     # Load checkpoint if resuming

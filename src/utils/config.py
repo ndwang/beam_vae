@@ -125,6 +125,12 @@ def load_config(
     if overrides:
         composed = apply_overrides(composed, overrides)
 
+    # Resolve any top-level keys that were overridden with YAML file paths
+    for key in ['model', 'training', 'data']:
+        if key in composed and isinstance(composed[key], str):
+            sub_path = config_dir / composed[key]
+            composed[key] = load_yaml(sub_path)
+
     # Validate config against schema
     if validate:
         from .validation import validate_config

@@ -41,6 +41,8 @@ class Trainer:
         loss_type: str = "mse",
         grad_clip: float = 1.0,
         logger_callback: Optional["LoggingCallback"] = None,
+        use_amp: bool = True,
+        compile_model: bool = True,
     ):
         self.model = model
         self.optimizer = optimizer
@@ -62,6 +64,18 @@ class Trainer:
 
         self.model.to(self.device)
 
+        # Mixed precision training
+        self.use_amp = use_amp and self.device.type == "cuda"
+        self.scaler = torch.amp.GradScaler("cuda") if self.use_amp else None
+
+        # torch.compile for fused kernels
+        if compile_model and hasattr(torch, "compile"):
+            self.model = torch.compile(self.model)
+
+        # cuDNN auto-tuner for fixed input sizes
+        if self.device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
+
         self.history = {
             "train_total": [], "train_recon": [], "train_kl": [], "train_scale": [],
             "val_total": [], "val_recon": [], "val_kl": [], "val_scale": [],
@@ -69,6 +83,12 @@ class Trainer:
 
         # Track starting epoch for resume functionality
         self.start_epoch = 0
+
+    def _get_base_model(self) -> nn.Module:
+        """Get the underlying model, unwrapping torch.compile if needed."""
+        if hasattr(self.model, "_orig_mod"):
+            return self.model._orig_mod
+        return self.model
 
     def load_checkpoint(self, checkpoint_path: Path) -> int:
         """Load a checkpoint to resume training.
@@ -86,8 +106,8 @@ class Trainer:
         print(f"Loading checkpoint: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
-        # Load model state
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        # Load model state (unwrap torch.compile if needed)
+        self._get_base_model().load_state_dict(checkpoint["model_state_dict"])
 
         # Load optimizer state
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -100,6 +120,10 @@ class Trainer:
         saved_beta = checkpoint.get("beta")
         if saved_beta is not None and saved_beta != self.beta:
             print(f"Warning: Checkpoint beta={saved_beta} differs from current beta={self.beta}")
+
+        # Restore AMP scaler state if available
+        if self.scaler is not None and checkpoint.get("scaler_state_dict") is not None:
+            self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
         # Set best validation loss from checkpoint
         self.best_val_loss = checkpoint.get("val_loss", float('inf'))
@@ -133,23 +157,32 @@ class Trainer:
             if max_steps is not None and step >= max_steps:
                 break
 
-            maps = maps.to(self.device)
-            scales = scales.to(self.device)
-            self.optimizer.zero_grad()
+            maps = maps.to(self.device, non_blocking=True)
+            scales = scales.to(self.device, non_blocking=True)
+            self.optimizer.zero_grad(set_to_none=True)
 
-            recon, pred_scales, mu, logvar = self.model(maps, scales)
-            loss, recon_loss, kl_loss, s_loss = vae_loss(
-                recon, maps, mu, logvar, self.beta, self.loss_type,
-                pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
-            )
+            with torch.amp.autocast("cuda", enabled=self.use_amp):
+                recon, pred_scales, mu, logvar = self.model(maps, scales)
+                loss, recon_loss, kl_loss, s_loss = vae_loss(
+                    recon, maps, mu, logvar, self.beta, self.loss_type,
+                    pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
+                )
 
             if torch.isnan(loss):
                 raise ValueError(f"NaN loss detected at step {step}")
 
-            loss.backward()
-            if self.grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-            self.optimizer.step()
+            if self.scaler is not None:
+                self.scaler.scale(loss).backward()
+                if self.grad_clip > 0:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                loss.backward()
+                if self.grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                self.optimizer.step()
 
             batch_size = maps.size(0)
             total_loss += loss.item() * batch_size
@@ -183,13 +216,14 @@ class Trainer:
         n_samples = 0
 
         for maps, scales in val_loader:
-            maps = maps.to(self.device)
-            scales = scales.to(self.device)
-            recon, pred_scales, mu, logvar = self.model(maps, scales)
-            loss, recon_loss, kl_loss, s_loss = vae_loss(
-                recon, maps, mu, logvar, self.beta, self.loss_type,
-                pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
-            )
+            maps = maps.to(self.device, non_blocking=True)
+            scales = scales.to(self.device, non_blocking=True)
+            with torch.amp.autocast("cuda", enabled=self.use_amp):
+                recon, pred_scales, mu, logvar = self.model(maps, scales)
+                loss, recon_loss, kl_loss, s_loss = vae_loss(
+                    recon, maps, mu, logvar, self.beta, self.loss_type,
+                    pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
+                )
 
             batch_size = maps.size(0)
             total_loss += loss.item() * batch_size
@@ -293,7 +327,7 @@ class Trainer:
             save_dir.mkdir(parents=True, exist_ok=True)
 
             model_path = save_dir / f"{model_name}.pth"
-            torch.save(self.model.state_dict(), model_path)
+            torch.save(self._get_base_model().state_dict(), model_path)
             print(f"Model saved to: {model_path}")
 
             history_path = save_dir / f"{model_name}_history.csv"
@@ -319,9 +353,10 @@ class Trainer:
         """
         torch.save({
             "epoch": epoch,
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": self._get_base_model().state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
+            "scaler_state_dict": self.scaler.state_dict() if self.scaler else None,
             "train_loss": train_metrics["total"],
             "train_recon_loss": train_metrics["recon"],
             "train_kl_loss": train_metrics["kl"],
