@@ -20,20 +20,23 @@ building frequency maps:
 | Index | Symbol | Description | Units |
 |-------|--------|-------------|-------|
 | 0 | x | Horizontal position | m |
-| 1 | x' | Horizontal angle (px / p_ref) | rad |
+| 1 | x' | Horizontal angle (px / p0c) | rad |
 | 2 | y | Vertical position | m |
-| 3 | y' | Vertical angle (py / p_ref) | rad |
-| 4 | z | Bunch-frame longitudinal position (−β·c·t, centered) | m |
-| 5 | δ | Relative momentum deviation ((pz − p_ref) / p_ref) | 1 |
+| 3 | y' | Vertical angle (py / p0c) | rad |
+| 4 | z | Bunch-frame longitudinal position (−β·c·t) | m |
+| 5 | δ | Relative momentum deviation ((pz − p0c) / p0c) | 1 |
 
-Here p_ref is the mean longitudinal momentum of alive particles at each
-snapshot. This choice of coordinates has several advantages:
+Here p0c is the design reference momentum read from the
+`totalMomentumOffset` attribute in the HDF5 file. The time variable t in
+the HDF5 is already t − t_ref, so no additional centering is applied.
+
+This choice of coordinates has several advantages:
 
 - **Removes energy dependence from scales.** In laboratory coordinates
-  (x, y, z, px, py, pz), the momentum scales carry a factor of p_ref ≈ E/c,
+  (x, y, z, px, py, pz), the momentum scales carry a factor of p0c ≈ E/c,
   creating a ~10 order-of-magnitude gap between position and momentum
   dimensions. Trace-space coordinates collapse this to ~5 orders of
-  magnitude, making the scale prediction head much better conditioned.
+  magnitude.
 
 - **Natural for beam optics.** Twiss parameters (α, β, γ), emittance, and
   beam matching are all defined in (x, x') and (y, y') trace space. The
@@ -46,14 +49,56 @@ snapshot. This choice of coordinates has several advantages:
   longitudinal information; converting via z = −β·c·t recovers the
   bunch-frame position spread.
 
+## Frequency Maps
+
 The 15 frequency map channels represent all unique pairwise 2D projections
-of these 6 coordinates. The channel ordering is determined by sorting the
+of the 6 trace-space coordinates. The channel ordering is determined by sorting the
 plane names alphabetically (see `src/data/preprocessing.py`).
 
 Each frequency map channel is a normalized 2D histogram on an adaptive
 grid of ±n_sigma (default 4) standard deviations per axis. The 6-component
-scale vector records the per-dimension standard deviations, enabling
-reconstruction of absolute beam sizes from the normalized maps.
+scale vector records the per-dimension standard deviations (σ), and the
+6-component centroid vector records the per-dimension means (beam orbit).
+The maps encode the *shape* of the distribution; the scales and centroids
+encode its *size and location* in physical space.
+
+## Normalization Pipeline
+
+The data passes through two stages of normalization:
+
+**Stage 1: Data generation** (`prepare_vae_data.py`)
+
+```
+HDF5 particles → trace-space (x, x', y, y', z, δ)
+  centroids = mean(particles, axis=0)   # 6 values: beam orbit
+  scales = std(particles, axis=0)       # 6 values: beam sizes
+  centered = particles - centroids
+  maps = histogram2d(centered, grid=[-4σ, 4σ])  # 15 × 64 × 64
+```
+
+The maps, scales, and centroids are saved as `.npy` files.
+
+**Stage 2: Training-time normalization** (`dataset.py`)
+
+Per-dimension z-score normalization is computed from the training split and
+applied in `__getitem__`:
+
+```
+normalized_scales = (log(scales) - mean(log(scales))) / std(log(scales))
+normalized_centroids = (centroids - mean(centroids)) / std(centroids)
+```
+
+Scales are normalized in log-space because the physical standard deviations
+span several orders of magnitude (~1e-7 to ~1e-1). The normalization
+statistics are also stored as model buffers (`scale_mean`, `scale_std`,
+`centroid_mean`, `centroid_std`) so that predictions can be converted back
+to physical units at inference via `model.denormalize_scales()` and
+`model.denormalize_centroids()`.
+
+The encoder receives normalized scales and centroids concatenated with the
+flattened convolutional features. The scale and centroid prediction heads
+output normalized values. The loss functions are plain MSE in normalized
+space, ensuring all dimensions contribute equally to the gradient.
 
 # Model Overview
 

@@ -53,6 +53,16 @@ def load_run(run_dir):
     model.load_state_dict(ckpt["model_state_dict"], strict=False)
     model.eval()
 
+    # Build norm_stats from model buffers (if they contain real stats)
+    norm_stats = None
+    if hasattr(model, 'scale_mean') and not torch.equal(model.scale_std, torch.ones_like(model.scale_std)):
+        norm_stats = {
+            'scale_mean': model.scale_mean,
+            'scale_std': model.scale_std,
+            'centroid_mean': model.centroid_mean,
+            'centroid_std': model.centroid_std,
+        }
+
     # Build val dataset
     data_cfg = config.get("data", {})
     training_cfg = config.get("training", {})
@@ -63,6 +73,7 @@ def load_run(run_dir):
         data_cfg["path"],
         data_cfg["scales_path"],
         data_cfg.get("centroids_path"),
+        norm_stats=norm_stats,
     )
     n = len(full_dataset)
     val_size = int(val_split * n)
@@ -84,13 +95,19 @@ def encode_samples(model, dataset, n_samples, batch_size=256):
     n = min(len(dataset), n_samples)
     subset = torch.utils.data.Subset(dataset, range(n))
     loader = DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=0)
+    has_norm = not torch.equal(model.scale_std, torch.ones_like(model.scale_std))
     all_mu, all_logvar, all_scales, all_centroids = [], [], [], []
     for maps, scales, centroids in loader:
         mu, logvar = model.encode(maps, scales, centroids)
         all_mu.append(mu.cpu().numpy())
         all_logvar.append(logvar.cpu().numpy())
-        all_scales.append(scales.numpy())
-        all_centroids.append(centroids.numpy())
+        # Return physical values for downstream analysis (PCA coloring, Twiss)
+        if has_norm:
+            all_scales.append(model.denormalize_scales(scales).cpu().numpy())
+            all_centroids.append(model.denormalize_centroids(centroids).cpu().numpy())
+        else:
+            all_scales.append(scales.numpy())
+            all_centroids.append(centroids.numpy())
     return (np.concatenate(all_mu), np.concatenate(all_logvar),
             np.concatenate(all_scales), np.concatenate(all_centroids))
 
@@ -106,14 +123,21 @@ def run_inference(model, dataset, n_samples, batch_size=256):
     all_pred_c, all_true_c = [], []
     for maps, scales, centroids in loader:
         recon, pred_s, pred_c, mu, logvar = model(maps, scales, centroids)
+        # Denormalize predictions and targets to physical space
         pred_s = model.denormalize_scales(pred_s)
         pred_c = model.denormalize_centroids(pred_c)
+        if not torch.equal(model.scale_std, torch.ones_like(model.scale_std)):
+            true_s = model.denormalize_scales(scales)
+            true_c = model.denormalize_centroids(centroids)
+        else:
+            true_s = scales
+            true_c = centroids
         all_maps.append(maps.numpy())
         all_recons.append(recon.cpu().numpy())
         all_pred_s.append(pred_s.cpu().numpy())
-        all_true_s.append(scales.numpy())
+        all_true_s.append(true_s.cpu().numpy())
         all_pred_c.append(pred_c.cpu().numpy())
-        all_true_c.append(centroids.numpy())
+        all_true_c.append(true_c.cpu().numpy())
     return {
         "inputs": np.concatenate(all_maps),
         "recons": np.concatenate(all_recons),

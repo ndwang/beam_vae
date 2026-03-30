@@ -78,13 +78,6 @@ class Trainer:
         if self.device.type == "cuda":
             torch.backends.cudnn.benchmark = True
 
-        # Cache normalization stats from model buffers (if present)
-        base = self._get_base_model()
-        self.scale_mean = getattr(base, 'scale_mean', None)
-        self.scale_std = getattr(base, 'scale_std', None)
-        self.centroid_mean = getattr(base, 'centroid_mean', None)
-        self.centroid_std = getattr(base, 'centroid_std', None)
-
         self.history = {
             "train_total": [], "train_recon": [], "train_kl": [], "train_scale": [], "train_centroid": [],
             "val_total": [], "val_recon": [], "val_kl": [], "val_scale": [], "val_centroid": [],
@@ -179,8 +172,6 @@ class Trainer:
                     recon, maps, mu, logvar, self.beta, self.loss_type,
                     pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
                     pred_centroids=pred_centroids, target_centroids=centroids, delta=self.delta,
-                    scale_mean=self.scale_mean, scale_std=self.scale_std,
-                    centroid_mean=self.centroid_mean, centroid_std=self.centroid_std,
                 )
 
             if torch.isnan(loss):
@@ -243,8 +234,6 @@ class Trainer:
                     recon, maps, mu, logvar, self.beta, self.loss_type,
                     pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
                     pred_centroids=pred_centroids, target_centroids=centroids, delta=self.delta,
-                    scale_mean=self.scale_mean, scale_std=self.scale_std,
-                    centroid_mean=self.centroid_mean, centroid_std=self.centroid_std,
                 )
 
             batch_size = maps.size(0)

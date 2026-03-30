@@ -48,53 +48,39 @@ def kl_divergence(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
 def scale_loss(
     pred_scales: torch.Tensor,
     target_scales: torch.Tensor,
-    mean: torch.Tensor = None,
-    std: torch.Tensor = None,
 ) -> torch.Tensor:
-    """Compute scale reconstruction loss in log-space.
+    """Compute scale prediction loss (MSE).
 
-    When mean/std are provided, both pred and target are in normalized space
-    (zero mean, unit variance per dimension).
+    Both pred and target should be in the same space — normalized if the
+    dataset applies normalization, raw log-space otherwise.
 
     Args:
         pred_scales: (B, n_scales) predicted scales from decoder.
-        target_scales: (B, n_scales) ground-truth scales (raw, not log).
-        mean: (n_scales,) per-dim mean of log(scales) from training set.
-        std: (n_scales,) per-dim std of log(scales) from training set.
+        target_scales: (B, n_scales) target scales from dataset.
 
     Returns:
         Scalar loss tensor.
     """
-    log_target = torch.log(target_scales)
-    if mean is not None and std is not None:
-        log_target = (log_target - mean) / std
-    return F.mse_loss(pred_scales, log_target)
+    return F.mse_loss(pred_scales, target_scales)
 
 
 def centroid_loss(
     pred_centroids: torch.Tensor,
     target_centroids: torch.Tensor,
-    mean: torch.Tensor = None,
-    std: torch.Tensor = None,
 ) -> torch.Tensor:
-    """Compute centroid reconstruction loss.
+    """Compute centroid prediction loss (MSE).
 
-    When mean/std are provided, both pred and target are in normalized space
-    (zero mean, unit variance per dimension).
+    Both pred and target should be in the same space — normalized if the
+    dataset applies normalization, raw otherwise.
 
     Args:
         pred_centroids: (B, n_centroids) predicted centroids from decoder.
-        target_centroids: (B, n_centroids) ground-truth centroids.
-        mean: (n_centroids,) per-dim mean of centroids from training set.
-        std: (n_centroids,) per-dim std of centroids from training set.
+        target_centroids: (B, n_centroids) target centroids from dataset.
 
     Returns:
         Scalar loss tensor.
     """
-    target = target_centroids
-    if mean is not None and std is not None:
-        target = (target - mean) / std
-    return F.mse_loss(pred_centroids, target)
+    return F.mse_loss(pred_centroids, target_centroids)
 
 
 def vae_loss(
@@ -110,10 +96,6 @@ def vae_loss(
     pred_centroids: torch.Tensor = None,
     target_centroids: torch.Tensor = None,
     delta: float = 0.0,
-    scale_mean: torch.Tensor = None,
-    scale_std: torch.Tensor = None,
-    centroid_mean: torch.Tensor = None,
-    centroid_std: torch.Tensor = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute total VAE loss (reconstruction + KL + scale + centroid).
 
@@ -130,10 +112,6 @@ def vae_loss(
         pred_centroids: (B, n_centroids) predicted centroids from decoder.
         target_centroids: (B, n_centroids) ground-truth centroids.
         delta: Weight for centroid reconstruction loss.
-        scale_mean: (n_scales,) per-dim mean of log(scales) for normalization.
-        scale_std: (n_scales,) per-dim std of log(scales) for normalization.
-        centroid_mean: (n_centroids,) per-dim mean of centroids for normalization.
-        centroid_std: (n_centroids,) per-dim std of centroids for normalization.
 
     Returns:
         Tuple of (total_loss, recon_loss, kl_loss, scale_loss_val, centroid_loss_val).
@@ -143,11 +121,11 @@ def vae_loss(
 
     s_loss = torch.tensor(0.0, device=recon.device)
     if pred_scales is not None and target_scales is not None and gamma > 0:
-        s_loss = scale_loss(pred_scales, target_scales, scale_mean, scale_std)
+        s_loss = scale_loss(pred_scales, target_scales)
 
     c_loss = torch.tensor(0.0, device=recon.device)
     if pred_centroids is not None and target_centroids is not None and delta > 0:
-        c_loss = centroid_loss(pred_centroids, target_centroids, centroid_mean, centroid_std)
+        c_loss = centroid_loss(pred_centroids, target_centroids)
 
     total_loss = recon_loss + beta * kl_loss + gamma * s_loss + delta * c_loss
 
