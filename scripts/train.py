@@ -28,6 +28,7 @@ from pathlib import Path
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np
 import torch
 import torch.multiprocessing
 from torch.utils.data import DataLoader
@@ -144,14 +145,34 @@ def main():
 
     print(f"Dataset: {n_samples} samples ({train_size} train, {val_size} val)")
 
+    # Compute normalization stats from training set
+    train_indices = train_dataset.indices
+    scales_all = np.load(scales_path, mmap_mode='r')
+    log_scales_train = np.log(scales_all[train_indices])
+    norm_stats = {
+        'scale_mean': torch.tensor(log_scales_train.mean(axis=0), dtype=torch.float32),
+        'scale_std': torch.tensor(log_scales_train.std(axis=0), dtype=torch.float32),
+    }
+    if centroids_path:
+        centroids_all = np.load(centroids_path, mmap_mode='r')
+        centroids_train = centroids_all[train_indices]
+        norm_stats['centroid_mean'] = torch.tensor(centroids_train.mean(axis=0), dtype=torch.float32)
+        norm_stats['centroid_std'] = torch.tensor(centroids_train.std(axis=0), dtype=torch.float32)
+    else:
+        n_centroids = model_cfg.get('n_centroids', 6)
+        norm_stats['centroid_mean'] = torch.zeros(n_centroids)
+        norm_stats['centroid_std'] = torch.ones(n_centroids)
+    print(f"Scale norm (log-space): mean={norm_stats['scale_mean'].numpy()}, std={norm_stats['scale_std'].numpy()}")
+    print(f"Centroid norm: mean={norm_stats['centroid_mean'].numpy()}, std={norm_stats['centroid_std'].numpy()}")
+
     # Create model
     model_name = model_cfg.get('name', 'vae2d')
     model_config = config_to_model_config(config)
 
     if model_name == 'residual_vae2d':
-        model = ResidualVAE2D(model_config)
+        model = ResidualVAE2D(model_config, norm_stats=norm_stats)
     else:
-        model = VAE2D(model_config)
+        model = VAE2D(model_config, norm_stats=norm_stats)
 
     # Optimizer
     lr = training_cfg.get('lr', 5e-4)

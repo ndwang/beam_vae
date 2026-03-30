@@ -142,7 +142,7 @@ class ResidualVAE2D(nn.Module):
     """
     Residual VAE 2D Architecture.
     """
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any], norm_stats: Optional[Dict[str, torch.Tensor]] = None) -> None:
         super().__init__()
         model_config = config.get('model', {})
 
@@ -239,6 +239,18 @@ class ResidualVAE2D(nn.Module):
 
         self._initialize_weights()
 
+        # Normalization stats for scale/centroid targets
+        if norm_stats is not None:
+            self.register_buffer('scale_mean', norm_stats['scale_mean'])
+            self.register_buffer('scale_std', norm_stats['scale_std'])
+            self.register_buffer('centroid_mean', norm_stats['centroid_mean'])
+            self.register_buffer('centroid_std', norm_stats['centroid_std'])
+        else:
+            self.register_buffer('scale_mean', torch.zeros(self.n_scales))
+            self.register_buffer('scale_std', torch.ones(self.n_scales))
+            self.register_buffer('centroid_mean', torch.zeros(self.n_centroids))
+            self.register_buffer('centroid_std', torch.ones(self.n_centroids))
+
         summary = self.get_model_summary()
         logger.info(f"VAE2D (Residual) initialized with {summary['total_parameters']:,} params")
 
@@ -251,10 +263,8 @@ class ResidualVAE2D(nn.Module):
         h = torch.cat([h, scales, centroids], dim=1)  # (B, bottleneck_features + n_scales + n_centroids)
         h = self.fc_bottleneck(h)
         h = self.bottleneck_activation(h)
-        mu = self.fc_mu(h)
-        logvar = self.fc_logvar(h)
-        # clamp for numerical stability
-        logvar = torch.clamp(logvar, min=-10, max=10)
+        mu = torch.clamp(self.fc_mu(h), min=-10, max=10)
+        logvar = torch.clamp(self.fc_logvar(h), min=-10, max=10)
         return mu, logvar
 
     @staticmethod
@@ -286,6 +296,22 @@ class ResidualVAE2D(nn.Module):
             z = mu
         recon, pred_scales, pred_centroids = self.decode(z)
         return recon, pred_scales, pred_centroids, mu, logvar
+
+    def normalize_scales(self, scales: torch.Tensor) -> torch.Tensor:
+        """Normalize log(scales) targets to zero mean, unit variance."""
+        return (torch.log(scales) - self.scale_mean) / self.scale_std
+
+    def normalize_centroids(self, centroids: torch.Tensor) -> torch.Tensor:
+        """Normalize centroid targets to zero mean, unit variance."""
+        return (centroids - self.centroid_mean) / self.centroid_std
+
+    def denormalize_scales(self, pred: torch.Tensor) -> torch.Tensor:
+        """Convert normalized scale predictions back to physical scales."""
+        return torch.exp(pred * self.scale_std + self.scale_mean)
+
+    def denormalize_centroids(self, pred: torch.Tensor) -> torch.Tensor:
+        """Convert normalized centroid predictions back to physical centroids."""
+        return pred * self.centroid_std + self.centroid_mean
 
     def get_model_summary(self) -> Dict[str, Any]:
         total_params = sum(p.numel() for p in self.parameters())

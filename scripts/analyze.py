@@ -50,7 +50,7 @@ def load_run(run_dir):
     model = model_cls(config)
 
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(ckpt["model_state_dict"])
+    model.load_state_dict(ckpt["model_state_dict"], strict=False)
     model.eval()
 
     # Build val dataset
@@ -106,6 +106,8 @@ def run_inference(model, dataset, n_samples, batch_size=256):
     all_pred_c, all_true_c = [], []
     for maps, scales, centroids in loader:
         recon, pred_s, pred_c, mu, logvar = model(maps, scales, centroids)
+        pred_s = model.denormalize_scales(pred_s)
+        pred_c = model.denormalize_centroids(pred_c)
         all_maps.append(maps.numpy())
         all_recons.append(recon.cpu().numpy())
         all_pred_s.append(pred_s.cpu().numpy())
@@ -468,11 +470,11 @@ def analyze_scales(model, dataset, output_dir, n_samples=5000):
     data = run_inference(model, dataset, n_samples)
     labels = [f"Scale {i}" for i in range(data["pred_scales"].shape[1])]
     mse, r2 = _scatter_and_stats(
-        data["pred_scales"], np.log(data["true_scales"]),
-        labels, "Scales (log-space)", output_dir, "scales",
+        data["pred_scales"], data["true_scales"],
+        labels, "Scales", output_dir, "scales",
     )
     for d in range(len(labels)):
-        print(f"  {labels[d]}: MSE={mse[d]:.4f}, R\u00b2={r2[d]:.4f}")
+        print(f"  {labels[d]}: MSE={mse[d]:.2e}, R\u00b2={r2[d]:.4f}")
 
 
 def analyze_centroids(model, dataset, output_dir, n_samples=5000):
