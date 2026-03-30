@@ -41,15 +41,17 @@ def main():
 
     all_maps = []
     all_scales = []
+    all_centroids = []
 
     for pf in particle_files:
         particles = np.load(pf)
         if particles.ndim != 2 or particles.shape[1] != 6:
             print(f"Skipping {pf}: expected (N, 6), got {particles.shape}")
             continue
-        maps, scales = particles_to_frequency_maps(particles, bins=args.bins, n_sigma=args.n_sigma)
+        maps, scales, centroids = particles_to_frequency_maps(particles, bins=args.bins, n_sigma=args.n_sigma)
         all_maps.append(maps.astype(np.float32))
         all_scales.append(scales.astype(np.float32))
+        all_centroids.append(centroids.astype(np.float32))
 
     if not all_maps:
         print("No valid particle files processed")
@@ -57,15 +59,18 @@ def main():
 
     all_maps = np.stack(all_maps, axis=0)
     all_scales = np.stack(all_scales, axis=0)
+    all_centroids = np.stack(all_centroids, axis=0)
 
     output_dir = Path(args.output).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     maps_path = f"{args.output}_maps.npy"
     scales_path = f"{args.output}_scales.npy"
+    centroids_path = f"{args.output}_centroids.npy"
     np.save(maps_path, all_maps)
     np.save(scales_path, all_scales)
-    print(f"Saved {len(all_maps)} samples: {maps_path}, {scales_path}")
+    np.save(centroids_path, all_centroids)
+    print(f"Saved {len(all_maps)} samples: {maps_path}, {scales_path}, {centroids_path}")
 
 
 if __name__ == "__main__":

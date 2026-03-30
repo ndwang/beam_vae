@@ -109,7 +109,8 @@ class Trainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
         # Load model state (unwrap torch.compile if needed)
-        self._get_base_model().load_state_dict(checkpoint["model_state_dict"])
+        # strict=False allows loading old checkpoints missing norm stat buffers
+        self._get_base_model().load_state_dict(checkpoint["model_state_dict"], strict=False)
 
         # Load optimizer state
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

@@ -28,6 +28,7 @@ from pathlib import Path
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np
 import torch
 import torch.multiprocessing
 from torch.utils.data import DataLoader
@@ -109,11 +110,38 @@ def main():
         raise ValueError("Scales path not specified in config (data.scales_path)")
     centroids_path = data_cfg.get('centroids_path')
 
-    full_dataset = FrequencyMapDataset(dataset_path, scales_path, centroids_path)
-    n_samples = len(full_dataset)
+    # Compute normalization stats from training split
+    # (split indices first to avoid data leakage)
+    n_samples_total = len(np.load(dataset_path, mmap_mode='r'))
     val_split = training_cfg.get('val_split', 0.1)
-    val_size = int(val_split * n_samples)
-    train_size = n_samples - val_size
+    val_size = int(val_split * n_samples_total)
+    train_size = n_samples_total - val_size
+
+    all_indices = torch.randperm(n_samples_total, generator=torch.Generator().manual_seed(seed))
+    train_indices = all_indices[:train_size].numpy()
+
+    scales_all = np.load(scales_path, mmap_mode='r')
+    log_scales_train = np.log(scales_all[train_indices])
+    norm_stats = {
+        'scale_mean': torch.tensor(log_scales_train.mean(axis=0), dtype=torch.float32),
+        'scale_std': torch.tensor(log_scales_train.std(axis=0), dtype=torch.float32),
+    }
+    if centroids_path:
+        centroids_all = np.load(centroids_path, mmap_mode='r')
+        centroids_train = centroids_all[train_indices]
+        norm_stats['centroid_mean'] = torch.tensor(centroids_train.mean(axis=0), dtype=torch.float32)
+        norm_stats['centroid_std'] = torch.tensor(centroids_train.std(axis=0), dtype=torch.float32)
+    else:
+        n_centroids = model_cfg.get('n_centroids', 6)
+        norm_stats['centroid_mean'] = torch.zeros(n_centroids)
+        norm_stats['centroid_std'] = torch.ones(n_centroids)
+    print(f"Scale norm (log-space): mean={norm_stats['scale_mean'].numpy()}, std={norm_stats['scale_std'].numpy()}")
+    print(f"Centroid norm: mean={norm_stats['centroid_mean'].numpy()}, std={norm_stats['centroid_std'].numpy()}")
+
+    # Dataset with normalization applied in __getitem__
+    full_dataset = FrequencyMapDataset(dataset_path, scales_path, centroids_path,
+                                       norm_stats=norm_stats)
+    n_samples = len(full_dataset)
 
     train_dataset, val_dataset = torch.utils.data.random_split(
         full_dataset,
@@ -144,14 +172,14 @@ def main():
 
     print(f"Dataset: {n_samples} samples ({train_size} train, {val_size} val)")
 
-    # Create model
+    # Create model (norm stats stored as buffers for denormalization at inference)
     model_name = model_cfg.get('name', 'vae2d')
     model_config = config_to_model_config(config)
 
     if model_name == 'residual_vae2d':
-        model = ResidualVAE2D(model_config)
+        model = ResidualVAE2D(model_config, norm_stats=norm_stats)
     else:
-        model = VAE2D(model_config)
+        model = VAE2D(model_config, norm_stats=norm_stats)
 
     # Optimizer
     lr = training_cfg.get('lr', 5e-4)

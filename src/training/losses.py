@@ -49,31 +49,33 @@ def scale_loss(
     pred_scales: torch.Tensor,
     target_scales: torch.Tensor,
 ) -> torch.Tensor:
-    """Compute scale reconstruction loss in log-space.
+    """Compute scale prediction loss (MSE).
 
-    MSE on log(sigma) handles the wide dynamic range of physical scales.
+    Both pred and target should be in the same space — normalized if the
+    dataset applies normalization, raw log-space otherwise.
 
     Args:
         pred_scales: (B, n_scales) predicted scales from decoder.
-        target_scales: (B, n_scales) ground-truth scales.
+        target_scales: (B, n_scales) target scales from dataset.
 
     Returns:
         Scalar loss tensor.
     """
-    return F.mse_loss(pred_scales, torch.log(target_scales))
+    return F.mse_loss(pred_scales, target_scales)
 
 
 def centroid_loss(
     pred_centroids: torch.Tensor,
     target_centroids: torch.Tensor,
 ) -> torch.Tensor:
-    """Compute centroid reconstruction loss.
+    """Compute centroid prediction loss (MSE).
 
-    MSE on raw centroid values (beam orbit positions).
+    Both pred and target should be in the same space — normalized if the
+    dataset applies normalization, raw otherwise.
 
     Args:
         pred_centroids: (B, n_centroids) predicted centroids from decoder.
-        target_centroids: (B, n_centroids) ground-truth centroids.
+        target_centroids: (B, n_centroids) target centroids from dataset.
 
     Returns:
         Scalar loss tensor.

@@ -3,11 +3,16 @@ from torch.utils.data import Dataset
 import numpy as np
 
 class FrequencyMapDataset(Dataset):
-    def __init__(self, maps_path, scales_path, centroids_path=None, transform=None):
+    def __init__(self, maps_path, scales_path, centroids_path=None, transform=None,
+                 norm_stats=None):
         self.maps_path = maps_path
         self.scales_path = scales_path
         self.centroids_path = centroids_path
         self.transform = transform
+
+        # Normalization stats: z-score per dimension for scales (in log-space) and centroids.
+        # When provided, __getitem__ returns normalized values.
+        self.norm_stats = norm_stats
 
         self._maps = None
         self._scales = None
@@ -49,6 +54,10 @@ class FrequencyMapDataset(Dataset):
         maps = torch.from_numpy(self._maps[idx].copy()).float()
         scales = torch.from_numpy(self._scales[idx].copy()).float()
         centroids = torch.from_numpy(self._centroids[idx].copy()).float()
+
+        if self.norm_stats is not None:
+            scales = (torch.log(scales) - self.norm_stats['scale_mean']) / self.norm_stats['scale_std']
+            centroids = (centroids - self.norm_stats['centroid_mean']) / self.norm_stats['centroid_std']
 
         if self.transform:
             maps = self.transform(maps)
