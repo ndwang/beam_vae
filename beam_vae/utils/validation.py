@@ -83,7 +83,8 @@ class TrainingConfig(BaseModel):
     beta: float = Field(default=0.0, ge=0.0)
     gamma: float = Field(default=1.0, ge=0.0)
     delta: float = Field(default=0.0, ge=0.0)
-    loss_type: Literal["mse", "bce"] = "mse"
+    loss_type: Literal["mse", "weighted_mse", "bce"] = "mse"
+    loss_config: dict = Field(default_factory=dict)
     grad_clip: float = Field(default=1.0, ge=0.0)
     val_split: float = Field(default=0.1, gt=0.0, lt=1.0)
     seed: int = 42

@@ -7,23 +7,34 @@ import torch.nn.functional as F
 def reconstruction_loss(
     recon: torch.Tensor,
     target: torch.Tensor,
-    loss_type: str = "mse"
+    loss_type: str = "mse",
+    loss_config: dict = None,
 ) -> torch.Tensor:
     """Compute reconstruction loss between reconstructed and target tensors.
 
     Args:
         recon: Reconstructed tensor from decoder.
         target: Original input tensor.
-        loss_type: Type of loss - 'mse' or 'bce'.
+        loss_type: Type of loss - 'mse', 'weighted_mse', or 'bce'.
+        loss_config: Extra parameters for specific loss types.
 
     Returns:
         Scalar loss tensor.
     """
+    if loss_config is None:
+        loss_config = {}
+
     if loss_type == "mse":
         # Sum over pixels (H, W), mean over batch and channels.
         # Each channel is a normalized density — its summed squared error
         # is the natural per-channel reconstruction metric.
         return ((recon - target) ** 2).sum(dim=(2, 3)).mean()
+    elif loss_type == "weighted_mse":
+        # Weight each pixel by target intensity so signal regions dominate.
+        # Floor prevents zero gradient on background (avoids hallucination).
+        floor = loss_config.get("floor", 1e-6)
+        weight = torch.clamp(target, min=floor)
+        return (weight * (recon - target) ** 2).sum(dim=(2, 3)).mean()
     elif loss_type == "bce":
         return F.binary_cross_entropy(recon, target)
     else:
@@ -96,6 +107,7 @@ def vae_loss(
     pred_centroids: torch.Tensor = None,
     target_centroids: torch.Tensor = None,
     delta: float = 0.0,
+    loss_config: dict = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute total VAE loss (reconstruction + KL + scale + centroid).
 
@@ -116,7 +128,7 @@ def vae_loss(
     Returns:
         Tuple of (total_loss, recon_loss, kl_loss, scale_loss_val, centroid_loss_val).
     """
-    recon_loss = reconstruction_loss(recon, target, loss_type)
+    recon_loss = reconstruction_loss(recon, target, loss_type, loss_config)
     kl_loss = kl_divergence(mu, logvar)
 
     s_loss = torch.tensor(0.0, device=recon.device)

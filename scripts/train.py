@@ -228,6 +228,7 @@ def main():
         gamma=training_cfg.get('gamma', 0.0),
         delta=training_cfg.get('delta', 0.0),
         loss_type=training_cfg.get('loss_type', 'mse'),
+        loss_config=training_cfg.get('loss_config', {}),
         grad_clip=training_cfg.get('grad_clip', 1.0),
         logger_callback=logger_callback,
         use_amp=training_cfg.get('use_amp', True),

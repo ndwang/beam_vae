@@ -40,6 +40,7 @@ class Trainer:
         gamma: float = 0.0,
         delta: float = 0.0,
         loss_type: str = "mse",
+        loss_config: dict = None,
         grad_clip: float = 1.0,
         logger_callback: Optional["LoggingCallback"] = None,
         use_amp: bool = True,
@@ -53,6 +54,7 @@ class Trainer:
         self.gamma = gamma
         self.delta = delta
         self.loss_type = loss_type
+        self.loss_config = loss_config or {}
         self.grad_clip = grad_clip
 
         # Logging callback (import here to avoid circular imports)
@@ -172,6 +174,7 @@ class Trainer:
                     recon, maps, mu, logvar, self.beta, self.loss_type,
                     pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
                     pred_centroids=pred_centroids, target_centroids=centroids, delta=self.delta,
+                    loss_config=self.loss_config,
                 )
 
             if torch.isnan(loss):
@@ -234,6 +237,7 @@ class Trainer:
                     recon, maps, mu, logvar, self.beta, self.loss_type,
                     pred_scales=pred_scales, target_scales=scales, gamma=self.gamma,
                     pred_centroids=pred_centroids, target_centroids=centroids, delta=self.delta,
+                    loss_config=self.loss_config,
                 )
 
             batch_size = maps.size(0)
