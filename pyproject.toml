@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vae"
+name = "beam-vae"
 version = "0.1.0"
 description = "VAE training pipeline for frequency map data"
 readme = "README.md"
@@ -28,7 +28,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src*"]
+include = ["beam_vae*"]
 
 [tool.black]
 line-length = 100

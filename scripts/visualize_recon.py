@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.models import VAE2D, ResidualVAE2D
-from src.data import FrequencyMapDataset
+from beam_vae.models import VAE2D, ResidualVAE2D
+from beam_vae.data import FrequencyMapDataset
 
 min_max_scaler = joblib.load("/pscratch/sd/n/ndwang/frequency_maps/minmax_log_scaler.pkl")
 

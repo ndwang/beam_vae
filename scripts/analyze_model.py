@@ -22,10 +22,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
 
-from src.models import VAE2D, ResidualVAE2D
-from src.data import FrequencyMapDataset
-from src.physics import transverse_twiss_numpy
-from src.utils.config import load_yaml
+from beam_vae.models import VAE2D, ResidualVAE2D
+from beam_vae.data import FrequencyMapDataset
+from beam_vae.physics import transverse_twiss_numpy
+from beam_vae.utils.config import load_yaml
 
 
 # ──────────────────────────────────────────────────────────────

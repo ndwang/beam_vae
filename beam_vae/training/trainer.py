@@ -12,7 +12,7 @@ from tqdm import tqdm
 from .losses import vae_loss
 
 if TYPE_CHECKING:
-    from src.utils.logging import LoggingCallback
+    from beam_vae.utils.logging import LoggingCallback
 
 
 class Trainer:
@@ -57,7 +57,7 @@ class Trainer:
 
         # Logging callback (import here to avoid circular imports)
         if logger_callback is None:
-            from src.utils.logging import NoOpCallback
+            from beam_vae.utils.logging import NoOpCallback
             logger_callback = NoOpCallback()
         self.logger_callback = logger_callback
 

@@ -16,7 +16,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data.preprocessing import particles_to_frequency_maps
+from beam_vae.data.preprocessing import particles_to_frequency_maps
 
 
 def main():

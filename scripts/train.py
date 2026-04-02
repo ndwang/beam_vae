@@ -37,10 +37,10 @@ from torch.utils.data import DataLoader
 # when torch.compile is enabled (prevents pthread_join failures)
 torch.multiprocessing.set_start_method("forkserver", force=True)
 
-from src.models import VAE2D, ResidualVAE2D
-from src.data import FrequencyMapDataset
-from src.training import Trainer
-from src.utils import load_config, save_config, config_to_model_config, generate_run_name, init_wandb
+from beam_vae.models import VAE2D, ResidualVAE2D
+from beam_vae.data import FrequencyMapDataset
+from beam_vae.training import Trainer
+from beam_vae.utils import load_config, save_config, config_to_model_config, generate_run_name, init_wandb
 
 
 def get_args():
