@@ -12,7 +12,7 @@ Variational Autoencoder training pipeline for frequency map data on NERSC Perlmu
 ├── scripts/          # Entry point scripts
 │   └── train.py      # Main training script
 ├── slurm/            # NERSC job submission scripts
-└── src/              # Source code
+└── beam_vae/         # Installable package (pip install -e .)
     ├── models/       # VAE2D, ResidualVAE2D
     ├── data/         # FrequencyMapDataset
     ├── training/     # Trainer, losses
@@ -40,13 +40,35 @@ sbatch slurm/submit_1d_scan.sh     # Parameter sweep
 sbatch slurm/submit_2d_grid.sh     # Grid search
 ```
 
+## Post-Training Analysis
+
+Two scripts for analyzing completed runs:
+
+```bash
+# 1. Loss curve analysis (fast, no GPU needed)
+#    Summary table, convergence speed, overfitting check, loss trajectory
+python scripts/analyze_losses.py runs/beta_*_260401_*           # Compare sweep
+python scripts/analyze_losses.py runs/beta_1e-5_260401_1523     # Single run
+python scripts/analyze_losses.py runs/lr_*_260401_* --convergence
+python scripts/analyze_losses.py runs/lr_*_260401_* --overfitting
+python scripts/analyze_losses.py runs/beta_*_260401_* --all     # Everything
+
+# 2. Model output analysis (runs inference, slower)
+#    Reconstructions, latent space PCA, scale/centroid R², dimension utilization
+python scripts/analyze_model.py runs/beta_1e-5_260401_1523
+python scripts/analyze_model.py runs/beta_1e-5_260401_1523 --only recon latent
+python scripts/analyze_model.py runs/beta_1e-5_260401_1523 --only scales centroids dims
+```
+
+Workflow: run `analyze_losses.py` first to identify interesting runs, then `analyze_model.py` on the winners for detailed inspection.
+
 ## Key Files
 
-- `src/models/vae2d.py` - Standard VAE architecture
-- `src/models/residual_vae2d.py` - VAE with residual blocks
-- `src/training/trainer.py` - Training loop, checkpointing, and resume
-- `src/utils/config.py` - YAML config loading with CLI overrides
-- `src/utils/validation.py` - Pydantic config schema validation
+- `beam_vae/models/vae2d.py` - Standard VAE architecture
+- `beam_vae/models/residual_vae2d.py` - VAE with residual blocks
+- `beam_vae/training/trainer.py` - Training loop, checkpointing, and resume
+- `beam_vae/utils/config.py` - YAML config loading with CLI overrides
+- `beam_vae/utils/validation.py` - Pydantic config schema validation
 
 ## Data
 
