@@ -1,0 +1,4 @@
+name: v2_sectioned_1sec_10k
+path: /pscratch/sd/n/ndwang/latent_beam_dynamics/data/v2/vae_training/sectioned_1sec_10k_maps.npy
+scales_path: /pscratch/sd/n/ndwang/latent_beam_dynamics/data/v2/vae_training/sectioned_1sec_10k_scales.npy
+centroids_path: /pscratch/sd/n/ndwang/latent_beam_dynamics/data/v2/vae_training/sectioned_1sec_10k_centroids.npy
