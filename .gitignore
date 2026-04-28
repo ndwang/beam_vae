@@ -68,3 +68,4 @@ wandb/
 *.log
 .env
 .env.local
+._dbindex_/
