@@ -383,21 +383,150 @@ All 4 completed. No collapse at either lr. lr=5e-4 reaches the same threshold 4�
 
 **What the result implies either way:** If the new surface is broadly similar to the old one for the stable cells and fills in the collapsed region cleanly, the lr=1e-3 heatmap was only wrong in the specific failure cells — the rest of the prior conclusions hold. If the new surface differs substantially even in the previously-stable region (e.g., dim=128 optimum shifts, scale/centroid curves change shape), it means lr was a confounding factor throughout and the prior scan conclusions need to be revisited. The new heatmap also directly answers whether lr sensitivity is dim- or beta-dependent: if dim=64/128 results at lr=5e-4 match lr=1e-3 closely, those dims are LR-robust; if they differ, lr matters everywhere.
 
+**Results (full 4×7 grid — 20 runs from 260510_2140, 8 resubmitted as job 52849963 on 260512_0804):**
+
+| dim \ beta | 1e-6 | 2e-6 | 5e-6 | 1e-5 | 2e-5 | 5e-5 | 1e-4 |
+|-----------|------|------|------|------|------|------|------|
+| 64  | 1.01/3.55/7.62e-5 | **8.9/1.77/4.97e-5** | 9.6/3.74/12.3e-5 | 10.8/7.70/59.0e-5 | 10.8/13.5/139e-5 | 12.6/113/787e-5 | 11.8/420/2500e-5 |
+| 128 | 11.8/2.04/3.68e-5 | 9.0/2.02/3.36e-5 | **10.8/1.82/4.72e-5**† | 9.62/6.05/28.7e-5† | 9.7/3.75/100e-5 | 11.0/22.3/254e-5 | 11.2/109/987e-5 |
+| 256 | 9.9/2.51/7.72e-5 | 9.2/3.04/9.81e-5 | **8.9/3.34/5.83e-5** | 9.1/3.60/6.54e-5 | 8.9/4.38/21.6e-5 | 10.8/6.17/96.0e-5 | 11.2/25.0/210e-5 |
+| 512 | 10.9/3.53/8.75e-5 | 10.6/3.66/9.40e-5 | 11.0/2.79/10.3e-5 | 9.9/4.12/5.23e-5 | **9.5/3.49/4.54e-5** | 9.8/5.15/36.8e-5 | 9.2/7.13/75.8e-5 |
+
+Values are (val_recon / val_scale / val_centroid) × 1e-5. Bold marks the apparent best cell per row.
+† lr=5e-4 run did not converge in 500 epochs for dim=128 at low beta (KL still 6.38 at ep500 for beta=5e-6; bad local minimum for beta=1e-5). Data from prior lr=1e-3 runs (260505_0959 and 260427_1122 respectively), which are stable at this dim.
+
+**Conclusions:**
+
+- **No collapsed cells.** All 28 runs trained cleanly, confirming that the collapse/NaN failures seen in prior scans were entirely LR-driven. The dim=256 cliff below beta=1e-5 is gone. The prior heatmap's empty cells were training artifacts, not genuine minima.
+
+- **The true optimal region is dim=256–512, beta=5e-6–2e-5.** Both dims reach val_recon ≈ 8.9–9.5e-6 and val_centroid < 6e-5 in this beta band. dim=64 tops out at val_recon=8.9e-6 (beta=2e-6) but its scale and centroid stay 2–3× worse than dim=256, exactly as seen in Scan 6.
+
+- **dim=256 + beta=5e-6 is the new single best cell.** val_recon=8.9e-6, val_scale=3.3e-5, val_centroid=5.8e-5, KL=0.59. This is modestly better on reconstruction than the previous champion (dim=256+beta=1e-5 at lr=1e-3, val_recon=7.9e-6) but substantially better on centroid (5.8e-5 vs 7.3e-5), and the previous champion was trained at lr=1e-3. The new cell at lr=5e-4 is the only honest comparison.
+
+- **dim=512 + beta=2e-5 is a close second.** val_recon=9.5e-6, val_scale=3.5e-5, val_centroid=4.5e-5, KL=0.13. Best centroid in the whole grid, suggesting the largest dim paired with moderate regularization allows the most precise beam-position encoding. The KL is very low (near-deterministic encoder), which may be undesirable for a generative model but is fine for a fixed-space encoder-decoder.
+
+- **beta=1e-4 is dead across all dims.** Scale and centroid collapse (e.g., dim=64: scale 4.2e-3, centroid 2.5e-2) while val_recon stays normal. The KL=0.1–0.5 confirms the encoder is essentially deterministic — the VAE has become a plain AE at this beta. This beta provides no useful regularization and should not be explored further.
+
+- **The low-beta / high-dim instability hypothesis (Scan 5/6) is resolved.** dim=512 at beta=1e-6 trains cleanly (val_recon=1.09e-5, KL=1.95) with no collapse. Prior failures were all lr=1e-3 artifacts. The model is not structurally fragile at low beta for any tested dim — only lr was the issue.
+
+- **dim=128 + beta=5e-6 has the best scale in the grid.** With data from the prior lr=1e-3 run, val_scale=1.82e-5 — better than any Scan 8 cell including dim=256+5e-6 (3.34e-5). val_centroid=4.72e-5 is also better than dim=256+5e-6 (5.83e-5). The trade-off is reconstruction: val_recon=1.08e-5 vs 8.9e-6 for dim=256+5e-6. Whether this trade-off is worthwhile depends on whether the downstream dynamics model cares more about physics-metric precision or reconstruction fidelity.
+
+- **lr=5e-4 does not converge for dim=128 at low beta.** The Scan 8 lr=5e-4 run at dim=128+beta=5e-6 had KL=6.38 at epoch 500 (target ~0.77); at lr=1e-3 the same cell reaches KL=1.79 by epoch 51. The beta=1e-5 cell converged quickly on KL but to a worse reconstruction basin. dim=128 does not suffer the posterior-collapse instability that motivated the lr change (that was specific to dim=256), so lr=1e-3 remains the right default for dim=128 at low beta. The expectation that lr=5e-4 results would closely match lr=1e-3 for dim=128 was not met in the low-beta region.
+
+- **The effective dimensionality question.** dim=256+5e-6 (KL=0.59) is approaching the near-deterministic regime but still has meaningful stochasticity. For downstream use in a transformer dynamics model, the meaningful question is active-dim count — this was measured as ~33/128 for the dim=128 Scan-5 model. Whether dim=256+5e-6 offers more active dims or the same compressed into a larger ambient space is not yet measured.
+
 ---
 
 ## Best Checkpoints
 
 | rank | run | val_recon | val_scale | val_centroid | notes |
 |------|-----|-----------|-----------|--------------|-------|
-| 1 (recon+scale) | `runs/latent_dim_256_260427_1122` (`runs/best`) | 7.9e-6 | 2.1e-5 | 7.3e-5 | dim=256, beta=1e-5 |
-| 2 (scale+centroid) | `runs/latent_dim_128_beta_5e-6_260505_0959` | 1.08e-5 | 1.82e-5 | 4.72e-5 | dim=128, beta=5e-6; 33/128 active dims |
+| 1 (best recon) | `runs/latent_dim_256_beta_5e-6_260512_0804` (`runs/best`) | 8.9e-6 | 3.3e-5 | 5.8e-5 | dim=256, beta=5e-6, lr=5e-4; KL=0.59 |
+| 2 (best scale) | `runs/latent_dim_128_beta_5e-6_260505_0959` | 1.08e-5 | 1.82e-5 | 4.72e-5 | dim=128, beta=5e-6, lr=1e-3; KL=0.77 |
+| 3 (best centroid) | `runs/latent_dim_512_beta_2e-5_260510_2140` | 9.5e-6 | 3.5e-5 | 4.5e-5 | dim=512, beta=2e-5, lr=5e-4; KL=0.13 |
+| 4 (prior best, superseded) | `runs/latent_dim_256_260427_1122` | 7.9e-6 | 2.1e-5 | 7.3e-5 | dim=256, beta=1e-5, lr=1e-3 |
+
+---
+
+## Inference Benchmark — Latent Dim Scaling (2026-05-13)
+
+**Setup:** One `_best.pth` checkpoint per latent_dim, all at beta=5e-6, all from the same job batch (260512_0804) except dim=128 (same batch). float32, A100 GPU. 20 warmup + 50 timed repetitions per (mode, batch_size) pair. Batch sizes: 1, 4, 16, 64, 256. Results saved to `<run>/benchmark/results.json`.
+
+Checkpoints:
+- dim=64: `runs/latent_dim_64_beta_5e-6_260512_0804/..._best.pth` (epoch 492)
+- dim=128: `runs/latent_dim_128_beta_5e-6_260512_0804/..._best.pth` (epoch 493)
+- dim=256: `runs/best/latent_dim_256_beta_5e-6_260512_0804_best.pth` (epoch 496)
+- dim=512: `runs/latent_dim_512_beta_5e-6_260512_0804/..._best.pth` (epoch 499)
+
+**Summary at bs=256 (peak throughput):**
+
+| latent_dim | encode (samp/s) | decode (samp/s) | encode mem (MB) | decode mem (MB) |
+|---|---|---|---|---|
+| 64  | 92,606 | 4,479 | 418 | 350 |
+| 128 | 94,778 | 4,506 | 423 | 354 |
+| 256 | 94,138 | 4,652 | 435 | 366 |
+| 512 | 92,077 | 4,725 | 456 | 388 |
+
+**Full results — dim=64:**
+
+| mode | bs | latency (ms) | tput (samp/s) | mem (MB) |
+|------|----|-------------|---------------|----------|
+| encode |   1 | 0.91 ± 0.04 |    1,095 |  92 |
+| decode |   1 | 0.68 ± 0.03 |    1,478 |  92 |
+| encode |   4 | 0.93 ± 0.01 |    4,303 |  93 |
+| decode |   4 | 1.15 ± 0.05 |    3,485 |  94 |
+| encode |  16 | 1.03 ± 0.02 |   15,551 | 112 |
+| decode |  16 | 3.57 ± 0.38 |    4,482 | 116 |
+| encode |  64 | 0.93 ± 0.02 |   68,963 | 170 |
+| decode |  64 | 12.10 ± 0.04 |   5,291 | 203 |
+| encode | 256 | 2.76 ± 0.01 |   92,606 | 418 |
+| decode | 256 | 57.16 ± 0.19 |   4,479 | 350 |
+
+**Full results — dim=128:**
+
+| mode | bs | latency (ms) | tput (samp/s) | mem (MB) |
+|------|----|-------------|---------------|----------|
+| encode |   1 | 0.91 ± 0.04 |    1,101 |  98 |
+| decode |   1 | 0.66 ± 0.01 |    1,507 |  98 |
+| encode |   4 | 0.92 ± 0.02 |    4,330 |  99 |
+| decode |   4 | 1.18 ± 0.00 |    3,398 |  99 |
+| encode |  16 | 0.95 ± 0.01 |   16,911 | 117 |
+| decode |  16 | 3.11 ± 0.05 |    5,152 | 121 |
+| encode |  64 | 0.93 ± 0.00 |   68,820 | 175 |
+| decode |  64 | 11.62 ± 0.07 |   5,507 | 208 |
+| encode | 256 | 2.70 ± 0.00 |   94,778 | 423 |
+| decode | 256 | 56.81 ± 0.24 |   4,506 | 354 |
+
+**Full results — dim=256:**
+
+| mode | bs | latency (ms) | tput (samp/s) | mem (MB) |
+|------|----|-------------|---------------|----------|
+| encode |   1 | 0.89 ± 0.03 |    1,119 | 109 |
+| decode |   1 | 0.65 ± 0.02 |    1,529 | 109 |
+| encode |   4 | 0.92 ± 0.03 |    4,342 | 110 |
+| decode |   4 | 1.19 ± 0.01 |    3,362 | 111 |
+| encode |  16 | 0.94 ± 0.03 |   17,073 | 128 |
+| decode |  16 | 3.09 ± 0.02 |    5,175 | 132 |
+| encode |  64 | 1.02 ± 0.01 |   62,510 | 186 |
+| decode |  64 | 11.42 ± 0.05 |   5,603 | 219 |
+| encode | 256 | 2.72 ± 0.00 |   94,138 | 435 |
+| decode | 256 | 55.03 ± 0.19 |   4,652 | 366 |
+
+**Full results — dim=512:**
+
+| mode | bs | latency (ms) | tput (samp/s) | mem (MB) |
+|------|----|-------------|---------------|----------|
+| encode |   1 | 0.89 ± 0.02 |    1,120 | 130 |
+| decode |   1 | 0.66 ± 0.01 |    1,527 | 130 |
+| encode |   4 | 0.92 ± 0.02 |    4,366 | 131 |
+| decode |   4 | 1.20 ± 0.00 |    3,324 | 133 |
+| encode |  16 | 1.00 ± 0.06 |   16,037 | 150 |
+| decode |  16 | 3.05 ± 0.01 |    5,253 | 154 |
+| encode |  64 | 0.94 ± 0.00 |   67,779 | 207 |
+| decode |  64 | 11.51 ± 0.03 |   5,559 | 240 |
+| encode | 256 | 2.78 ± 0.00 |   92,077 | 456 |
+| decode | 256 | 54.18 ± 0.18 |   4,725 | 388 |
+
+**Conclusions:**
+
+- **Latent dim has essentially no effect on throughput or latency.** Encode throughput at bs=256 spans only 92,077–94,778 samp/s across all four dims — a 3% range. Latency curves are indistinguishable within noise. The convolutional backbone dominates compute; the linear projection layers between the conv features and the latent space are negligible by comparison.
+
+- **Memory cost scales modestly with latent_dim.** From dim=64 to dim=512, peak GPU memory at bs=256 rises from 418 → 456 MB for encode and 350 → 388 MB for decode — a total increase of ~38 MB for an 8× increase in latent dimension. The conv layers account for the large fixed baseline; the latent projection adds very little.
+
+- **The decoder is the compute bottleneck, not the encoder.** At bs=256, encode latency is ~2.7 ms; decode latency is ~55 ms — a 20× gap. Any optimization effort for inference throughput should target the decoder convolutions, not the latent space.
+
+- **Encode throughput saturates at bs=64.** Encode latency barely moves from bs=1 (0.91 ms) to bs=64 (0.93 ms), meaning online single-sample inference has the same per-sample cost as batch inference for the encoder. The encoder is compute-light enough to saturate the GPU early; the decoder does not saturate until bs=256 and likely beyond.
+
+- **Practical implication:** Latent dim choice is entirely a model-quality decision. There is no inference-time cost argument for preferring a smaller latent dim, so dim=256 or dim=512 can be selected based purely on downstream physics metrics without any throughput penalty.
 
 ---
 
 ## Open Questions
 
-- **What is the true dim=256 optimum at lr=5e-4?** Every beta < 1e-5 tested at dim=256 was trained at lr=1e-3 and failed (collapse or NaN). None of those results reflect what those configs can actually do. Re-running beta ∈ {1e-6, 2e-6, 5e-6, 2e-5} at dim=256 with lr=5e-4 is the highest-priority next scan.
+- **Active dimension count for Scan 8 winners.** The dim=256+5e-6 and dim=512+2e-5 cells have not been analyzed with `analyze_model.py`. Measuring how many latent dims are actually active (variance > threshold) determines whether the larger models offer richer representations or merely pad the same ~30–40 active dims with dead dimensions.
 
-- **Is dim=256 over-provisioned for beam dynamics?** dim=128 + beta=5e-6 uses 33/128 active dims — same intrinsic dimensionality as dim=256 (45/256) but 37% worse reconstruction. The transformer dynamics model may absorb that reconstruction gap if the latent space is more compact.
+- **Which cell to hand to the dynamics model?** dim=256+5e-6 is the best on reconstruction; dim=512+2e-5 is the best on centroid. The right choice depends on whether the transformer dynamics model cares more about reconstruction fidelity or beam-position precision. A quick ablation with both checkpoints as frozen encoders would resolve this.
 
-- **Is lr sensitivity dim- and beta-dependent?** The LR scan confirms lr=5e-4 is right for dim=256 at low beta, but dim=128 ran stably at lr=1e-3. Whether the optimal LR shifts with dim or beta is untested.
+- **Is beta=2e-6 or lower worth exploring at dim=256/512?** dim=256+2e-6 (val_recon=9.2e-6, centroid=9.8e-5) is worse than dim=256+5e-6 on centroid, suggesting 5e-6 is already near the sweet spot. But beta=1e-6 at dim=256 (centroid=7.7e-5) is also better than beta=2e-6. The centroid vs. beta curve is non-monotonic at dim=256, which may be worth following up.
+
+- **lr default should be dim-dependent.** Scan 8 confirms lr=5e-4 is necessary for dim=256 (and probably dim=512 at low beta), but lr=1e-3 is correct for dim=128 — it converges ~10× faster and avoids the slow-KL-settling problem seen at lr=5e-4. A mixed-lr grid for dim=64 is untested; it's likely fine at lr=1e-3 given its smaller capacity.

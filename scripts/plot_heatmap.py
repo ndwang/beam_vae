@@ -13,61 +13,54 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 # ── data ──────────────────────────────────────────────────────────────────────
-# Rows: latent_dim ∈ {128, 256, 512}
-# Cols: beta ∈ {0, 1e-6, 1e-5, 1e-4, 1e-3}
-# Values: val metric at best epoch; None = not run.
-# SPECIAL: cells with a non-numeric outcome (collapse, crash, timeout).
+# Scan 8 — full latent_dim × beta grid at lr=5e-4 (the new stable default).
+# Best-epoch (min val_total) values.
+# Initial run 260510_2140: 20/28 cells; 8 crashed (torch _inductor cache race).
+# Resubmit job 52849963 (260512_0804): completed all 8 remaining cells.
 
 DIMS  = [64, 128, 256, 512]
-BETAS = [0, 1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4, 1e-3]
+BETAS = [1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4]
 
 # (dim, beta) → (val_recon, val_scale, val_centroid)
 DATA = {
-    # Scan 6 — dim=64 beta sweep
-    (64,  1e-6): (1.02e-5, 2.70e-5, 5.24e-5),  # partial collapse (KL=25.4)
-    (64,  2e-6): (9.5e-6,  3.24e-5, 5.88e-5),  # partial collapse (KL=5.78)
-    (64,  5e-6): (1.02e-5, 7.41e-5, 1.51e-4),
-    (64,  1e-5): (1.01e-5, 4.60e-5, 6.37e-4),
+    # dim=64
+    (64,  1e-6): (1.01e-5, 3.55e-5, 7.62e-5),  # KL=20.0 (underregularized)
+    (64,  2e-6): (8.9e-6,  1.77e-5, 4.97e-5),  # KL=1.74  ★ best scale+centroid
+    (64,  5e-6): (9.6e-6,  3.74e-5, 1.23e-4),  # KL=1.40
+    (64,  1e-5): (1.08e-5, 7.70e-5, 5.90e-4),
+    (64,  2e-5): (1.08e-5, 1.35e-4, 1.39e-3),
+    (64,  5e-5): (1.26e-5, 1.13e-3, 7.87e-3),
+    (64,  1e-4): (1.18e-5, 4.20e-3, 2.50e-2),  # KL=0.46 (over-regularized)
 
-    # Scan 1 — dim=128 beta sweep
-    (128, 0):    (9.9e-6,  7.6e-5,  8.8e-5),
-    (128, 1e-6): (1.1e-5,  5.6e-5,  1.3e-4),
-    (128, 1e-5): (9.6e-6,  6.1e-5,  1.1e-4),
-    (128, 1e-4): (9.4e-6,  3.3e-5,  1.4e-4),
+    # dim=128
+    (128, 1e-6): (1.18e-5, 2.04e-5, 3.68e-5),  # KL=26.7 (underregularized)
+    (128, 2e-6): (9.0e-6,  2.02e-5, 3.36e-5),  # KL=15.9 (underregularized)
+    (128, 5e-6): (1.08e-5, 1.82e-5, 4.72e-5),  # KL=0.77 — from 260505 lr=1e-3 (lr=5e-4 run didn't converge in 500ep)
+    (128, 1e-5): (9.62e-6, 6.05e-5, 2.87e-4),  # KL=0.62 — from 260427 lr=1e-3
+    (128, 2e-5): (9.7e-6,  3.75e-5, 1.00e-3),
+    (128, 5e-5): (1.10e-5, 2.23e-4, 2.54e-3),
+    (128, 1e-4): (1.12e-5, 1.09e-3, 9.87e-3),  # KL=0.31
 
-    # Scan 5 — dim=128 fine beta sweep
-    (128, 2e-6): (1.17e-5, 3.78e-5, 5.87e-5),
-    (128, 5e-6): (1.08e-5, 1.82e-5, 4.72e-5),
-    (128, 2e-5): (9.2e-6,  1.34e-4, 3.66e-4),
-    (128, 5e-5): (1.18e-5, 2.99e-4, 2.36e-3),
+    # dim=256
+    (256, 1e-6): (9.9e-6,  2.51e-5, 7.72e-5),  # KL=2.06
+    (256, 2e-6): (9.2e-6,  3.04e-5, 9.81e-5),  # KL=1.72 — previously collapsed at lr=1e-3
+    (256, 5e-6): (8.9e-6,  3.34e-5, 5.83e-5),  # KL=0.59
+    (256, 1e-5): (9.1e-6,  3.60e-5, 6.54e-5),
+    (256, 2e-5): (8.9e-6,  4.38e-5, 2.16e-4),
+    (256, 5e-5): (1.08e-5, 6.17e-5, 9.60e-4),
+    (256, 1e-4): (1.12e-5, 2.50e-4, 2.10e-3),  # KL=0.20
 
-    # Scan 2 / 3 / 4 / 5 — dim=256
-    (256, 0):    (4.3e-4,  1.0e-2,  2.8e-2),  # collapsed epoch 9 (lr=1e-3)
-    (256, 1e-6): (8.6e-6,  2.52e-5, 1.224e-4),  # Scan 7, lr=5e-4, epoch 468
-    (256, 2e-6): (2.33e-4, 9.3e-3,  6.3e-2),  # collapsed epoch 13 (lr=1e-3)
-    (256, 5e-6): (9.5e-6,  3.80e-5, 8.85e-5),  # Scan 7, lr=5e-4, epoch 500
-    (256, 1e-5): (7.9e-6,  2.1e-5,  7.3e-5),
-    (256, 2e-5): (9.51e-6, 3.87e-5, 2.53e-4),  # Scan 5 rerun, 500 epochs
-    (256, 5e-5): (9.97e-6, 1.11e-4, 7.76e-4),  # Scan 5 rerun, epoch-500 converged value
-    (256, 1e-4): (9.9e-6,  2.9e-4,  1.5e-3),
-    (256, 1e-3): (1.4e-5,  3.6e-2,  5.7e-2),
-
-    # Scan 3 / 4 / 5 — dim=512 (512+1e-6 timed out at epoch 459)
-    (512, 1e-6): (9.9e-6,  1.9e-5,  4.8e-5),  # t/o epoch 459, not collapsed (KL=1.39)
-    (512, 1e-5): (1.1e-5,  2.0e-5,  4.3e-5),
-    (512, 2e-5): (1.30e-5, 3.40e-5, 5.70e-5),  # Scan 5 rerun, 500 epochs
-    (512, 5e-5): (1.08e-5, 4.73e-5, 1.46e-4),  # Scan 5 rerun, 500 epochs
-    (512, 1e-4): (1.5e-5,  3.5e-3,  5.5e-4),
+    # dim=512
+    (512, 1e-6): (1.09e-5, 3.53e-5, 8.75e-5),
+    (512, 2e-6): (1.06e-5, 3.66e-5, 9.40e-5),
+    (512, 5e-6): (1.10e-5, 2.79e-5, 1.03e-4),  # KL=0.48
+    (512, 1e-5): (9.9e-6,  4.12e-5, 5.23e-5),
+    (512, 2e-5): (9.5e-6,  3.49e-5, 4.54e-5),
+    (512, 5e-5): (9.8e-6,  5.15e-5, 3.68e-4),
+    (512, 1e-4): (9.2e-6,  7.13e-5, 7.58e-4),  # KL=0.13
 }
 
-# Cells with a special label overlaid on (or instead of) the numeric value.
-# "unreg" = posterior collapse (beta too low); "crash" = NaN/exception
-# "t/o" = timed out; "partial" = partial collapse, still shows numeric value
-SPECIAL = {
-    (256, 0):   "unreg",  # collapsed epoch 9, lr=1e-3
-    (256, 2e-6): "unreg",  # collapsed epoch 13, lr=1e-3
-    (512, 0):   "unreg",  # collapsed before epoch 50, lr=1e-3
-}
+SPECIAL = {}
 
 # ── build arrays ──────────────────────────────────────────────────────────────
 nrows, ncols = len(DIMS), len(BETAS)
@@ -85,10 +78,10 @@ for ri, d in enumerate(DIMS):
 
 # ── plot ──────────────────────────────────────────────────────────────────────
 fig, axes = plt.subplots(1, 3, figsize=(24, 5))
-fig.suptitle("Val loss heatmaps: latent_dim × beta  (lower = better, log scale)",
+fig.suptitle("Val loss heatmaps: latent_dim × beta @ lr=5e-4 (Scan 8)  (lower = better, log scale)",
              fontsize=13)
 
-beta_labels = ["0", "1e-6", "2e-6", "5e-6", "1e-5", "2e-5", "5e-5", "1e-4", "1e-3"]
+beta_labels = ["1e-6", "2e-6", "5e-6", "1e-5", "2e-5", "5e-5", "1e-4"]
 dim_labels  = [str(d) for d in DIMS]
 
 panels = [
@@ -128,6 +121,10 @@ for ax, (title, mat) in zip(axes, panels):
                 elif special == "t/o":
                     ax.text(ci, ri, "t/o", ha="center", va="center",
                             fontsize=8, color="gray", fontweight="bold")
+                elif special == "pending":
+                    ax.text(ci, ri, "pending", ha="center", va="center",
+                            fontsize=7, color="gray", fontweight="bold",
+                            fontstyle="italic")
                 elif np.isnan(v):
                     ax.text(ci, ri, "—", ha="center", va="center",
                             fontsize=8, color="gray", fontweight="bold")
@@ -139,6 +136,6 @@ for ax, (title, mat) in zip(axes, panels):
                             fontsize=8, color=color, fontweight="bold")
 
 plt.tight_layout()
-out = "runs/heatmap_dim_beta.png"
+out = "runs/heatmap_dim_beta_scan8.png"
 plt.savefig(out, dpi=150, bbox_inches="tight")
 print(f"Saved {out}")
